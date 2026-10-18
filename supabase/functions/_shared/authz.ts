@@ -1,0 +1,47 @@
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+
+export async function requireTeacher(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<{ ok: true } | { ok: false; code: "forbidden" | "internal"; message: string }> {
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id, role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) return { ok: false, code: "internal", message: "Profile lookup failed" };
+  if (!data || data.role !== "teacher") {
+    return { ok: false, code: "forbidden", message: "Teacher profile required" };
+  }
+  return { ok: true };
+}
+
+export async function teacherOwnsClass(
+  admin: SupabaseClient,
+  teacherId: string,
+  classId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("class_teachers")
+    .select("class_id")
+    .eq("class_id", classId)
+    .eq("teacher_id", teacherId)
+    .maybeSingle();
+  if (error) return false;
+  return !!data;
+}
+
+export async function teacherOwnsStudent(
+  admin: SupabaseClient,
+  teacherId: string,
+  studentId: string,
+): Promise<{ classId: string } | null> {
+  const { data, error } = await admin
+    .from("class_students")
+    .select("class_id, class_teachers!inner(teacher_id)")
+    .eq("student_id", studentId)
+    .eq("class_teachers.teacher_id", teacherId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { classId: data.class_id as string };
+}

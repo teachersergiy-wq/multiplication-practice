@@ -47,3 +47,12 @@ enable_signup = false
 
 [functions.provision-teacher]
 verify_jwt = true
+
+[functions.create-students]
+verify_jwt = true
+
+[functions.reset-student-password]
+verify_jwt = true
+
+[functions.delete-student]
+verify_jwt = true

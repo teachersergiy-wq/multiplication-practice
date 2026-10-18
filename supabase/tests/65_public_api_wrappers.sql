@@ -10,7 +10,7 @@ select tests.ok(public.api_is_allowed_teacher('nope@test.local') = false, 'allow
 do $$
 declare uid uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa66'; result jsonb;
 begin
-  perform tests.ensure_auth_user(uid, 'allowed-g1@test.local');
+  perform tests.ensure_auth_user(uid, 'allowed-g1-prov@test.local');
   result := public.api_provision_teacher(uid, 'Teacher Wrap', 'School W', 'Class W');
   perform tests.ok((result->>'created')::boolean = true, 'first provision creates');
   result := public.api_provision_teacher(uid, 'Ignored', 'X', 'Y');

@@ -1,6 +1,6 @@
 begin;
-select tests.ok(not has_table_privilege('authenticated', 'private.allowed_teachers', 'select'), 'authenticated cannot SELECT private.allowed_teachers');
 select tests.ok(not has_function_privilege('authenticated', 'private.publish_assessment(uuid)', 'execute'), 'authenticated cannot EXECUTE publish_assessment');
+select tests.ok(not has_function_privilege('authenticated', 'private.finalize_attempt(uuid)', 'execute'), 'authenticated cannot EXECUTE finalize_attempt');
 select tests.ok(not has_function_privilege('authenticated', 'private.create_student_records(uuid,text,text,uuid,text)', 'execute'), 'authenticated cannot EXECUTE create_student_records');
 do $$
 declare

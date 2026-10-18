@@ -1,6 +1,5 @@
 -- Shared helpers for security tests. Safe to re-run.
--- JWT claims for auth.uid() + SESSION AUTHORIZATION so RLS and GRANT apply
--- when CI connects as postgres (superuser otherwise bypasses both).
+-- Matches main/G0: JWT claims for auth.uid(); callers use SET LOCAL ROLE when needed.
 
 create extension if not exists pgcrypto with schema extensions;
 create schema if not exists tests;
@@ -62,8 +61,7 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', uid::text, true);
   perform set_config('request.jwt.claim.role', role_name, true);
-  -- Superuser bypasses RLS/REVOKE unless we change session authorization.
-  execute format('set local session authorization %I', role_name);
+  perform set_config('role', role_name, true);
 end;
 $$;
 
@@ -74,15 +72,13 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', '', true);
   perform set_config('request.jwt.claim.role', '', true);
-  execute 'set local session authorization default';
+  perform set_config('role', 'postgres', true);
 end;
 $$;
 
 create or replace function tests.ensure_auth_user(p_id uuid, p_email text)
 returns void
 language plpgsql
-security definer
-set search_path = auth, extensions, public, pg_temp
 as $$
 begin
   insert into auth.users (

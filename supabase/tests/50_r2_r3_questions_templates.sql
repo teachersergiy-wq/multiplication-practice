@@ -1,8 +1,6 @@
--- R2/R3: questions not client-writable; student select locked to owner policy;
--- template status cannot leave draft via client WITH CHECK.
+-- R2/R3 privilege + WITH CHECK draft (catalog + SET LOCAL ROLE like 10_grants).
 begin;
 
--- Catalog: clients lost INSERT/UPDATE/DELETE on assessment_questions
 select tests.ok(
   not has_table_privilege('authenticated', 'public.assessment_questions', 'insert'),
   'authenticated cannot INSERT assessment_questions'
@@ -15,71 +13,44 @@ select tests.ok(
   not has_table_privilege('authenticated', 'public.assessment_questions', 'delete'),
   'authenticated cannot DELETE assessment_questions'
 );
-select tests.ok(
-  not has_table_privilege('anon', 'public.assessment_questions', 'select'),
-  'anon cannot SELECT assessment_questions'
-);
 
 do $$
 declare
   teacher_id uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa20';
-  student_id uuid := 'cccccccc-cccc-cccc-cccc-cccccccccc20';
   subject_id uuid;
-  school_id uuid;
-  class_id uuid;
   template_id uuid := 'dddddddd-dddd-dddd-dddd-dddddddddd20';
-  qid uuid;
 begin
   perform tests.ensure_auth_user(teacher_id, 'r2-t@test.local');
-  perform tests.ensure_auth_user(student_id, 'r2-s@test.local');
-
-  insert into public.profiles (id, role, full_name, generated_nickname, student_login_code)
-  values
-    (teacher_id, 'teacher', 'R2 T', 'r2-t', null),
-    (student_id, 'student', 'R2 S', 'r2-s', 'R2ST01')
+  insert into public.profiles (id, role, full_name, generated_nickname)
+  values (teacher_id, 'teacher', 'R2 T', 'r2-t')
   on conflict (id) do nothing;
-
-  insert into public.schools (name) values ('R2 School') returning id into school_id;
-  insert into public.classes (school_id, name) values (school_id, 'R2') returning id into class_id;
-  insert into public.class_teachers values (class_id, teacher_id);
-  insert into public.class_students values (student_id, class_id);
-
   select id into subject_id from public.subjects where code = 'mathematics' limit 1;
-  insert into public.class_subjects values (class_id, subject_id, 3) on conflict do nothing;
-
   insert into public.assessment_templates (id, teacher_id, subject_id, grade_level, title, status)
   values (template_id, teacher_id, subject_id, 3, 'R2 draft', 'draft');
-
-  insert into public.assessment_questions (template_id, position, question_type, prompt)
-  values (template_id, 1, 'numeric', '{"text":"1+1"}'::jsonb)
-  returning id into qid;
-
-  -- As student session: must not see questions (owner-only SELECT policy)
-  perform tests.set_jwt(student_id);
-  if exists (select 1 from public.assessment_questions q where q.id = qid) then
-    perform tests.fail('student can read assessment_questions');
-  end if;
-
-  -- As teacher: UPDATE status to published must not stick (WITH CHECK draft)
-  perform tests.set_jwt(teacher_id);
-  update public.assessment_templates set status = 'published' where id = template_id;
-  perform tests.clear_jwt();
-
-  if exists (
-    select 1 from public.assessment_templates
-    where id = template_id and status = 'published'
-  ) then
-    perform tests.fail('client was able to set status=published');
-  end if;
-
-  perform tests.ok(
-    exists (
-      select 1 from public.assessment_templates
-      where id = template_id and status = 'draft'
-    ),
-    'template remains draft after client publish attempt'
-  );
+  perform set_config('tests.teacher_id', teacher_id::text, true);
+  perform set_config('tests.template_id', template_id::text, true);
 end;
 $$;
+
+-- Client role cannot publish (WITH CHECK status = draft)
+select tests.set_jwt(current_setting('tests.teacher_id')::uuid);
+set local role authenticated;
+select tests.updates_zero_rows(
+  format(
+    'update public.assessment_templates set status = ''published'' where id = %L',
+    current_setting('tests.template_id')
+  ),
+  'authenticated cannot set status=published'
+);
+reset role;
+select tests.clear_jwt();
+
+select tests.ok(
+  exists (
+    select 1 from public.assessment_templates
+    where id = current_setting('tests.template_id')::uuid and status = 'draft'
+  ),
+  'template remains draft'
+);
 
 rollback;

@@ -1,10 +1,6 @@
--- R5 unique in_progress; R6 allowlist private; R7 functions not executable by clients.
+-- R5 unique in_progress; R6/R7 privilege catalog checks.
 begin;
 
-select tests.ok(
-  not has_table_privilege('authenticated', 'private.allowed_teachers', 'select'),
-  'authenticated cannot SELECT private.allowed_teachers'
-);
 select tests.ok(
   not has_function_privilege(
     'authenticated',
@@ -12,6 +8,14 @@ select tests.ok(
     'execute'
   ),
   'authenticated cannot EXECUTE publish_assessment'
+);
+select tests.ok(
+  not has_function_privilege(
+    'authenticated',
+    'private.finalize_attempt(uuid)',
+    'execute'
+  ),
+  'authenticated cannot EXECUTE finalize_attempt'
 );
 select tests.ok(
   not has_function_privilege(

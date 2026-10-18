@@ -47,7 +47,5 @@ enable_confirmations = false
 [auth.sms]
 enable_signup = false
 
-# Edge Functions: JWT required by default (API_CONTRACT R8 / §1).
-# Per-function overrides can be added under [functions.<name>] when functions exist.
-[functions]
-verify_jwt = true
+# Per-function verify_jwt is set under [functions.<name>] when a function exists.
+# Do not put verify_jwt on a bare [functions] table — the CLI rejects it.

@@ -1,35 +1,68 @@
+-- Shared helpers for security tests. Safe to re-run.
+-- Simulates RLS context via request.jwt.claim.* and SET ROLE.
+-- Failures RAISE EXCEPTION. No pgTAP required.
+
 create extension if not exists pgcrypto with schema extensions;
 create schema if not exists tests;
 
 create or replace function tests.fail(msg text)
-returns void language plpgsql as $$
-begin raise exception 'TEST FAILED: %', msg; end;
+returns void
+language plpgsql
+as $$
+begin
+  raise exception 'TEST FAILED: %', msg;
+end;
 $$;
 
 create or replace function tests.ok(cond boolean, msg text)
-returns void language plpgsql as $$
-begin if not coalesce(cond, false) then perform tests.fail(msg); end if; end;
+returns void
+language plpgsql
+as $$
+begin
+  if not coalesce(cond, false) then
+    perform tests.fail(msg);
+  end if;
+end;
 $$;
 
+-- Expects the statement to raise. Any success is a failure.
+-- Use for missing GRANTs / WITH CHECK violations that error.
+-- Do NOT use for RLS UPDATE/SELECT that succeed with zero rows.
 create or replace function tests.throws(sql text, msg text)
-returns void language plpgsql as $$
+returns void
+language plpgsql
+as $$
 begin
-  begin execute sql; exception when others then return; end;
+  begin
+    execute sql;
+  exception
+    when others then
+      return;
+  end;
   perform tests.fail(msg || ' (expected error, got success)');
 end;
 $$;
 
+-- Expects DML to affect zero rows (typical silent RLS deny on UPDATE/DELETE).
 create or replace function tests.updates_zero_rows(sql text, msg text)
-returns void language plpgsql as $$
-declare n integer;
+returns void
+language plpgsql
+as $$
+declare
+  n integer;
 begin
-  execute sql; get diagnostics n = row_count;
-  if n <> 0 then perform tests.fail(msg || format(' (expected 0 rows affected, got %s)', n)); end if;
+  execute sql;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    perform tests.fail(msg || format(' (expected 0 rows affected, got %s)', n));
+  end if;
 end;
 $$;
 
 create or replace function tests.set_jwt(uid uuid, role_name text default 'authenticated')
-returns void language plpgsql as $$
+returns void
+language plpgsql
+as $$
 begin
   perform set_config('request.jwt.claim.sub', uid::text, true);
   perform set_config('request.jwt.claim.role', role_name, true);
@@ -38,7 +71,9 @@ end;
 $$;
 
 create or replace function tests.clear_jwt()
-returns void language plpgsql as $$
+returns void
+language plpgsql
+as $$
 begin
   perform set_config('request.jwt.claim.sub', '', true);
   perform set_config('request.jwt.claim.role', '', true);
@@ -46,31 +81,62 @@ begin
 end;
 $$;
 
+-- Minimal auth.users row compatible with Supabase GoTrue schema.
 create or replace function tests.ensure_auth_user(p_id uuid, p_email text)
-returns void language plpgsql as $$
+returns void
+language plpgsql
+as $$
 begin
   insert into auth.users (
-    id, instance_id, aud, role, email, encrypted_password,
-    email_confirmed_at, recovery_sent_at, last_sign_in_at,
-    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
-    confirmation_token, email_change, email_change_token_new, recovery_token
+    id,
+    instance_id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    recovery_sent_at,
+    last_sign_in_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at,
+    confirmation_token,
+    email_change,
+    email_change_token_new,
+    recovery_token
   ) values (
-    p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-    p_email, crypt('test-password', gen_salt('bf')),
-    now(), now(), now(),
-    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
-    now(), now(), '', '', '', ''
-  ) on conflict (id) do nothing;
-exception when undefined_function then
-  insert into auth.users (
-    id, instance_id, aud, role, email, encrypted_password,
-    email_confirmed_at, created_at, updated_at,
-    confirmation_token, email_change, email_change_token_new, recovery_token
-  ) values (
-    p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-    p_email, extensions.crypt('test-password', extensions.gen_salt('bf')),
-    now(), now(), now(), '', '', '', ''
-  ) on conflict (id) do nothing;
+    p_id,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    p_email,
+    crypt('test-password', gen_salt('bf')),
+    now(),
+    now(),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    now(),
+    now(),
+    '',
+    '',
+    '',
+    ''
+  )
+  on conflict (id) do nothing;
+exception
+  when undefined_function then
+    insert into auth.users (
+      id, instance_id, aud, role, email, encrypted_password,
+      email_confirmed_at, created_at, updated_at,
+      confirmation_token, email_change, email_change_token_new, recovery_token
+    ) values (
+      p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+      p_email, extensions.crypt('test-password', extensions.gen_salt('bf')),
+      now(), now(), now(), '', '', '', ''
+    )
+    on conflict (id) do nothing;
 end;
 $$;
 

@@ -1,6 +1,6 @@
 -- Shared helpers for security tests. Safe to re-run.
--- Simulates RLS context via request.jwt.claim.* and SET LOCAL ROLE.
--- Failures RAISE EXCEPTION. No pgTAP required.
+-- JWT claims for auth.uid() + SESSION AUTHORIZATION so RLS and GRANT apply
+-- when CI connects as postgres (superuser otherwise bypasses both).
 
 create extension if not exists pgcrypto with schema extensions;
 create schema if not exists tests;
@@ -25,7 +25,6 @@ begin
 end;
 $$;
 
--- Expects the statement to raise. Any success is a failure.
 create or replace function tests.throws(sql text, msg text)
 returns void
 language plpgsql
@@ -41,7 +40,6 @@ begin
 end;
 $$;
 
--- Expects DML to affect zero rows (typical silent RLS deny on UPDATE/DELETE).
 create or replace function tests.updates_zero_rows(sql text, msg text)
 returns void
 language plpgsql
@@ -57,7 +55,6 @@ begin
 end;
 $$;
 
--- JWT claims for auth.uid() + real session role so GRANT and RLS apply.
 create or replace function tests.set_jwt(uid uuid, role_name text default 'authenticated')
 returns void
 language plpgsql
@@ -65,8 +62,8 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', uid::text, true);
   perform set_config('request.jwt.claim.role', role_name, true);
-  -- Must SET ROLE: postgres bypasses RLS and ignores REVOKE on functions.
-  execute format('set local role %I', role_name);
+  -- Superuser bypasses RLS/REVOKE unless we change session authorization.
+  execute format('set local session authorization %I', role_name);
 end;
 $$;
 
@@ -77,11 +74,10 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', '', true);
   perform set_config('request.jwt.claim.role', '', true);
-  execute 'set local role none';
+  execute 'set local session authorization default';
 end;
 $$;
 
--- Minimal auth.users row compatible with Supabase GoTrue schema.
 create or replace function tests.ensure_auth_user(p_id uuid, p_email text)
 returns void
 language plpgsql
@@ -90,41 +86,16 @@ set search_path = auth, extensions, public, pg_temp
 as $$
 begin
   insert into auth.users (
-    id,
-    instance_id,
-    aud,
-    role,
-    email,
-    encrypted_password,
-    email_confirmed_at,
-    recovery_sent_at,
-    last_sign_in_at,
-    raw_app_meta_data,
-    raw_user_meta_data,
-    created_at,
-    updated_at,
-    confirmation_token,
-    email_change,
-    email_change_token_new,
-    recovery_token
+    id, instance_id, aud, role, email, encrypted_password,
+    email_confirmed_at, recovery_sent_at, last_sign_in_at,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, email_change, email_change_token_new, recovery_token
   ) values (
-    p_id,
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    p_email,
-    crypt('test-password', gen_salt('bf')),
-    now(),
-    now(),
-    now(),
-    '{"provider":"email","providers":["email"]}'::jsonb,
-    '{}'::jsonb,
-    now(),
-    now(),
-    '',
-    '',
-    '',
-    ''
+    p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+    p_email, crypt('test-password', gen_salt('bf')),
+    now(), now(), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(), '', '', '', ''
   )
   on conflict (id) do nothing;
 exception

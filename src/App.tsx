@@ -1,39 +1,67 @@
 import { useMemo, useState } from "react";
 import type { AssessmentDraft, QuestionType } from "./domain";
-import { grades, starterDrafts, subjects } from "./domain";
+import { grades, isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
 
-const storageKey = "learning-studio-assessment-drafts-v1";
+const storageKey = "learning-studio-assessment-drafts-v2";
+const legacyStorageKey = "learning-studio-assessment-drafts-v1";
 
 function readDrafts(): AssessmentDraft[] {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(storageKey) ?? "null");
-    if (Array.isArray(value)) return value as AssessmentDraft[];
+    const drafts = migrateAssessmentDrafts(value);
+    if (drafts) {
+      try {
+        if (JSON.stringify(drafts) !== JSON.stringify(value)) {
+          localStorage.setItem(storageKey, JSON.stringify(drafts));
+        }
+      } catch {
+        // Keep the migrated drafts available in memory if storage is unavailable.
+      }
+      return drafts;
+    }
   } catch {
     // A corrupted local draft is safely ignored.
   }
+
+  try {
+    const legacyValue: unknown = JSON.parse(localStorage.getItem(legacyStorageKey) ?? "null");
+    const legacyDrafts = migrateAssessmentDrafts(legacyValue, { legacyQuestionTypes: true });
+    if (legacyDrafts) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(legacyDrafts));
+        if (isAssessmentDraftCollection(legacyValue)) localStorage.removeItem(legacyStorageKey);
+      } catch {
+        // Keep migrated drafts in memory if storage is unavailable.
+      }
+      return legacyDrafts;
+    }
+  } catch {
+    // A corrupted legacy draft is safely ignored.
+  }
+
   return starterDrafts;
 }
 
 export function App() {
   const [drafts, setDrafts] = useState<AssessmentDraft[]>(readDrafts);
-  const [subjectId, setSubjectId] = useState("math");
+  const [subjectCode, setSubjectCode] = useState("mathematics");
   const [grade, setGrade] = useState(3);
   const [questionType, setQuestionType] = useState<QuestionType>("numeric");
   const [title, setTitle] = useState("");
   const [notice, setNotice] = useState("");
 
   const visibleDrafts = useMemo(
-    () => drafts.filter((draft) => draft.subjectId === subjectId && draft.grade === grade),
-    [drafts, subjectId, grade],
+    () => drafts.filter((draft) => draft.subjectId === subjectCode && draft.grade === grade),
+    [drafts, subjectCode, grade],
   );
 
   function saveDraft(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const selectedSubject = subjects.find((subject) => subject.id === subjectId)!;
+    const selectedSubject = subjects.find((subject) => subject.code === subjectCode)!;
     const draft: AssessmentDraft = {
       id: crypto.randomUUID(),
       title: title.trim() || `${selectedSubject.name} · ${grade} клас`,
-      subjectId,
+      subjectId: subjectCode,
       grade,
       questionType,
       questionCount: 10,
@@ -42,9 +70,16 @@ export function App() {
     };
     const next = [draft, ...drafts];
     setDrafts(next);
-    localStorage.setItem(storageKey, JSON.stringify(next));
+    let saved = true;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      saved = false;
+    }
     setTitle("");
-    setNotice("Чернетку збережено на цьому пристрої. Після підключення облікового запису її можна буде синхронізувати.");
+    setNotice(saved
+      ? "Чернетку збережено на цьому пристрої. Після підключення облікового запису її можна буде синхронізувати."
+      : "Чернетка доступна до закриття цієї сторінки, але браузер не дозволив її зберегти.");
     window.setTimeout(() => setNotice(""), 5000);
   }
 
@@ -86,7 +121,7 @@ export function App() {
         </div>
         <div className="subject-grid">
           {subjects.map((subject) => (
-            <button key={subject.id} className={`subject-card ${subject.tone} ${subjectId === subject.id ? "selected" : ""}`} onClick={() => setSubjectId(subject.id)}>
+            <button key={subject.code} className={`subject-card ${subject.tone} ${subjectCode === subject.code ? "selected" : ""}`} onClick={() => setSubjectCode(subject.code)}>
               <span className="subject-icon">{subject.icon}</span><span className="subject-arrow">↗</span>
               <strong>{subject.name}</strong><small>{subject.description}</small>
             </button>
@@ -104,7 +139,7 @@ export function App() {
             <label className="grade-select">КЛАС <select value={grade} onChange={(event) => setGrade(Number(event.target.value))}>{grades.map((item) => <option key={item} value={item}>{item} клас</option>)}</select></label>
           </div>
           {visibleDrafts.length ? <div className="draft-list">{visibleDrafts.map((draft) => {
-            const subject = subjects.find((item) => item.id === draft.subjectId)!;
+            const subject = subjects.find((item) => item.code === draft.subjectId)!;
             return <article className="draft-row" key={draft.id}><span className={`draft-icon ${subject.tone}`}>{subject.icon}</span><div className="draft-info"><strong>{draft.title}</strong><small>{subject.name} <i>·</i> {draft.grade} клас <i>·</i> {draft.questionCount} запитань</small></div><span className="draft-status">{draft.updatedAt}</span><button className="row-menu" aria-label={`Дії: ${draft.title}`}>···</button></article>;
           })}</div> : <div className="empty-state"><span>✎</span><strong>Тут з’являться ваші тести</strong><p>Створіть першу заготовку для обраного предмета й класу.</p></div>}
         </div>
@@ -115,10 +150,10 @@ export function App() {
           <form onSubmit={saveDraft}>
             <label className="field-label">НАЗВА <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Наприклад, Таблиця множення" /></label>
             <div className="form-row">
-              <label className="field-label">ПРЕДМЕТ<select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
+              <label className="field-label">ПРЕДМЕТ<select value={subjectCode} onChange={(event) => setSubjectCode(event.target.value)}>{subjects.map((subject) => <option key={subject.code} value={subject.code}>{subject.name}</option>)}</select></label>
               <label className="field-label">КЛАС<select value={grade} onChange={(event) => setGrade(Number(event.target.value))}>{grades.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             </div>
-            <label className="field-label">ТИП ЗАПИТАНЬ<select value={questionType} onChange={(event) => setQuestionType(event.target.value as QuestionType)}><option value="numeric">Числова відповідь</option><option value="multiple_choice">Один варіант відповіді</option><option value="short_answer">Коротка відповідь</option></select></label>
+            <label className="field-label">ТИП ЗАПИТАНЬ<select value={questionType} onChange={(event) => setQuestionType(event.target.value as QuestionType)}>{Object.entries(questionTypeLabels).map(([type, label]) => <option key={type} value={type}>{label}</option>)}</select></label>
             <button className="primary-button form-submit" type="submit">Створити заготовку <span>→</span></button>
           </form>
           <div className="builder-footnote"><span>⌘</span> Чернетки поки зберігаються у цьому браузері</div>
@@ -130,3 +165,4 @@ export function App() {
     </main>
   );
 }
+

@@ -41,6 +41,7 @@ begin
   perform set_config('tests.teacher_b', teacher_b::text, true);
   perform set_config('tests.class_b', class_b::text, true);
   perform set_config('tests.template_b', template_b::text, true);
+  perform set_config('tests.template_b_title', 'B private draft', true);
 end;
 $$;
 
@@ -54,8 +55,8 @@ select tests.ok(
   'teacher A does not see teacher B template'
 );
 
--- Teacher A cannot update teacher B template.
-select tests.throws(
+-- Teacher A UPDATE on B template is silently denied by RLS (0 rows), not an exception.
+select tests.updates_zero_rows(
   format(
     'update public.assessment_templates set title = ''hacked'' where id = %L',
     current_setting('tests.template_b')
@@ -63,7 +64,19 @@ select tests.throws(
   'teacher A must not update teacher B template'
 );
 
--- Teacher A cannot manage teacher B class_subjects.
+-- Confirm title unchanged as postgres.
+select tests.clear_jwt();
+select tests.ok(
+  exists (
+    select 1 from public.assessment_templates t
+    where t.id = current_setting('tests.template_b')::uuid
+      and t.title = 'B private draft'
+  ),
+  'teacher B template title unchanged after A update attempt'
+);
+
+-- Teacher A cannot manage teacher B class_subjects (WITH CHECK / USING fail → error).
+select tests.set_jwt(current_setting('tests.teacher_a')::uuid);
 select tests.throws(
   format(
     $q$

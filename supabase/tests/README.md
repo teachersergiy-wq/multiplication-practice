@@ -4,23 +4,32 @@ These tests validate grants and RLS after `20261018010000_tighten_grants_and_pol
 
 ## Requirements
 
-- Local Supabase (Docker) or any Postgres with the project migrations applied.
-- Extensions used by seed paths: `pgcrypto` (for `crypt`/`gen_salt` in test fixtures).
+- `supabase/config.toml` present (CI gate).
+- Local Supabase (Docker) or CI job `Database tests`.
+- Extensions used by fixtures: `pgcrypto` (via `crypt`/`gen_salt`).
 - **Do not run against production** `bvetbqbxjrvrmdhszmcw`.
 
-## Run
+## Run (local)
 
 ```bash
-# from repo root, with local stack up
-supabase db reset   # applies migrations locally
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/00_helpers.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/10_grants_and_anon.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/20_policies_subjects_templates.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/30_teacher_isolation.sql
+supabase start
+export DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+for f in supabase/tests/[0-9][0-9]_*.sql; do
+  echo "== $f"
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+done
 ```
 
-Each file runs in a transaction and **rolls back** fixture data.
+Each numbered file after `00_helpers.sql` runs in a transaction and rolls back fixtures.
 
-## Status in Grok cloud session
+## What the helpers mean
 
-`docker`, `psql`, and `supabase` CLI were **not available**. Runtime execution is **BLOCKED** in that environment; tests are provided for the owner/local runner.
+| Helper | Use when |
+|--------|----------|
+| `tests.throws` | Statement must raise (missing GRANT, WITH CHECK fail) |
+| `tests.updates_zero_rows` | UPDATE/DELETE succeeds but RLS affects 0 rows |
+| `tests.ok` | Boolean assertion |
+
+## Verify after apply (owner, non-prod)
+
+See `VERIFY_AFTER_APPLY.sql`.

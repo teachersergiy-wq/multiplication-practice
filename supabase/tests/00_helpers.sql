@@ -1,6 +1,6 @@
 -- Shared helpers for security tests. Safe to re-run.
--- These tests use SET LOCAL ROLE and request.jwt.claim.* to simulate RLS context.
--- They do not require the pgTAP extension; failures RAISE EXCEPTION.
+-- Simulates RLS context via request.jwt.claim.* and SET ROLE.
+-- Failures RAISE EXCEPTION. No pgTAP required.
 
 create schema if not exists tests;
 
@@ -24,6 +24,9 @@ begin
 end;
 $$;
 
+-- Expects the statement to raise. Any success is a failure.
+-- Use for missing GRANTs / WITH CHECK violations that error.
+-- Do NOT use for RLS UPDATE/SELECT that succeed with zero rows.
 create or replace function tests.throws(sql text, msg text)
 returns void
 language plpgsql
@@ -31,11 +34,29 @@ as $$
 begin
   begin
     execute sql;
-    perform tests.fail(msg || ' (expected error, got success)');
   exception
     when others then
-      null; -- expected
+      -- Expected path: statement failed.
+      return;
   end;
+  -- Fell through without exception.
+  perform tests.fail(msg || ' (expected error, got success)');
+end;
+$$;
+
+-- Expects DML to affect zero rows (typical silent RLS deny on UPDATE/DELETE).
+create or replace function tests.updates_zero_rows(sql text, msg text)
+returns void
+language plpgsql
+as $$
+declare
+  n integer;
+begin
+  execute sql;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    perform tests.fail(msg || format(' (expected 0 rows affected, got %s)', n));
+  end if;
 end;
 $$;
 
@@ -60,3 +81,8 @@ begin
   perform set_config('role', 'postgres', true);
 end;
 $$;
+
+-- Allow test helpers to run while SET ROLE anon/authenticated is active.
+grant usage on schema tests to anon, authenticated;
+grant execute on all functions in schema tests to anon, authenticated;
+alter default privileges in schema tests grant execute on functions to anon, authenticated;

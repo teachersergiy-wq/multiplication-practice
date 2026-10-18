@@ -1,8 +1,5 @@
--- G0 security tests: grants, anon lockdown, privileged ops, answer keys.
--- Run after all migrations on a local database only.
--- Usage (local):
---   psql $DATABASE_URL -v ON_ERROR_STOP=1 -f supabase/tests/00_helpers.sql
---   psql $DATABASE_URL -v ON_ERROR_STOP=1 -f supabase/tests/10_grants_and_anon.sql
+-- G0: grants, anon lockdown, attempts/responses write deny, answer keys.
+-- Depends on 00_helpers.sql (run first by name order in CI).
 
 begin;
 
@@ -54,7 +51,7 @@ select tests.ok(
   'private.assessment_answer_keys has no grants to anon/authenticated/public'
 );
 
--- Runtime: anon cannot read a public table even if a row exists.
+-- Runtime: anon has no SELECT/INSERT privilege → must error (not silent empty).
 set local role anon;
 select tests.throws(
   'select count(*) from public.subjects',
@@ -63,6 +60,10 @@ select tests.throws(
 select tests.throws(
   'insert into public.subjects(code, name) values (''x'', ''x'')',
   'anon insert subjects must fail'
+);
+select tests.throws(
+  'select count(*) from private.assessment_answer_keys',
+  'anon select answer keys must fail'
 );
 reset role;
 

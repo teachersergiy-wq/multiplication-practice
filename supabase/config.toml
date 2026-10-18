@@ -1,0 +1,53 @@
+# Local / CI Supabase configuration for multiplication-practice.
+# Does not target production project bvetbqbxjrvrmdhszmcw.
+
+project_id = "multiplication-practice"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "private", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = ["http://127.0.0.1:5173"]
+# Student passwords are 6 characters (2 letters + 4 digits) per API_CONTRACT §4.
+minimum_password_length = 6
+# Public self-signup is disabled; teachers/students are provisioned by Edge Functions.
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false
+
+[auth.sms]
+enable_signup = false
+
+# Edge Functions: JWT required by default (API_CONTRACT R8 / §1).
+# Per-function overrides can be added under [functions.<name>] when functions exist.
+[functions]
+verify_jwt = true

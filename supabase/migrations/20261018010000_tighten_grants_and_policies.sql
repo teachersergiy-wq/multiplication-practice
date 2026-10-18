@@ -20,15 +20,12 @@
 revoke all on all tables in schema public from anon, authenticated;
 revoke all on all sequences in schema public from anon, authenticated;
 
--- Default privileges must target the roles that create objects in migrations.
+-- Default privileges must target the role that creates objects in migrations.
 -- Unscoped ALTER DEFAULT PRIVILEGES only affects objects created by the current user.
+-- Only `postgres` is referenced: `supabase_admin` is not guaranteed in every local stack.
 alter default privileges for role postgres in schema public
   revoke all on tables from anon, authenticated;
 alter default privileges for role postgres in schema public
-  revoke all on sequences from anon, authenticated;
-alter default privileges for role supabase_admin in schema public
-  revoke all on tables from anon, authenticated;
-alter default privileges for role supabase_admin in schema public
   revoke all on sequences from anon, authenticated;
 
 -- Defense in depth: answer keys stay unreachable even if a future grant slips in.

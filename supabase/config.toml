@@ -35,9 +35,7 @@ enabled = false
 enabled = true
 site_url = "http://127.0.0.1:5173"
 additional_redirect_urls = ["http://127.0.0.1:5173"]
-# Student passwords are 6 characters (2 letters + 4 digits) per API_CONTRACT §4.
 minimum_password_length = 6
-# Public self-signup is disabled; teachers/students are provisioned by Edge Functions.
 enable_signup = false
 
 [auth.email]
@@ -47,7 +45,5 @@ enable_confirmations = false
 [auth.sms]
 enable_signup = false
 
-# Edge Functions: JWT required by default (API_CONTRACT R8 / §1).
-# Per-function overrides can be added under [functions.<name>] when functions exist.
-[functions]
+[functions.provision-teacher]
 verify_jwt = true

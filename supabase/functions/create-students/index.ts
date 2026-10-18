@@ -1,6 +1,7 @@
 /**
  * create-students — teacher only; own class; credentials per API_CONTRACT.
- * Auth user creation is external; on failure after Auth create, compensate by deleting Auth user.
+ * Auth is outside DB transactions → full compensation on any failure:
+ * delete Auth users and DB rows created in this invocation; never return partial success.
  */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
@@ -25,6 +26,20 @@ Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return jsonErr(req, "invalid_request", "POST required");
+
+  const createdAuthIds: string[] = [];
+
+  const compensate = async (admin: ReturnType<typeof adminClient>) => {
+    for (const id of createdAuthIds) {
+      try {
+        await admin.from("class_students").delete().eq("student_id", id);
+        await admin.from("profiles").delete().eq("id", id);
+        await admin.auth.admin.deleteUser(id);
+      } catch {
+        console.error("compensation step failed");
+      }
+    }
+  };
 
   try {
     const userSb = userClient(req);
@@ -107,17 +122,6 @@ Deno.serve(async (req) => {
       login: string;
       password: string;
     }[] = [];
-    const authCreatedIds: string[] = [];
-
-    const rollbackAuth = async () => {
-      for (const id of authCreatedIds) {
-        try {
-          await admin.auth.admin.deleteUser(id);
-        } catch {
-          console.error("compensation deleteUser failed");
-        }
-      }
-    };
 
     for (const fullName of names) {
       let login = "";
@@ -125,7 +129,6 @@ Deno.serve(async (req) => {
       let password = "";
       let authId = "";
 
-      // Unique login retry
       for (let attempt = 0; attempt < 12; attempt++) {
         login = generateLogin();
         email = studentEmail(login, domain);
@@ -144,17 +147,14 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: { role: "student", login },
         });
-        if (authErr || !authData.user) {
-          // Likely email collision — retry with new login
-          continue;
-        }
+        if (authErr || !authData.user) continue;
         authId = authData.user.id;
-        authCreatedIds.push(authId);
+        createdAuthIds.push(authId);
         break;
       }
 
       if (!authId) {
-        await rollbackAuth();
+        await compensate(admin);
         return jsonErr(req, "internal", "Failed to allocate unique student credentials");
       }
 
@@ -167,30 +167,10 @@ Deno.serve(async (req) => {
         p_nickname: nick,
       });
 
-      // Fallback if RPC not exposed via public schema alias
       if (rpcErr) {
-        const { error: insProf } = await admin.from("profiles").insert({
-          id: authId,
-          role: "student",
-          full_name: fullName,
-          generated_nickname: nick,
-          student_login_code: login,
-        });
-        if (insProf) {
-          await rollbackAuth();
-          console.error("profile insert failed after auth create");
-          return jsonErr(req, "internal", "Failed to create student profile");
-        }
-        const { error: insLink } = await admin.from("class_students").insert({
-          student_id: authId,
-          class_id: classId,
-        });
-        if (insLink) {
-          await admin.from("profiles").delete().eq("id", authId);
-          await rollbackAuth();
-          console.error("class_students insert failed");
-          return jsonErr(req, "internal", "Failed to link student to class");
-        }
+        await compensate(admin);
+        console.error("create_student_records failed");
+        return jsonErr(req, "internal", "Failed to create student records");
       }
 
       created.push({ studentId: authId, fullName, login, password });
@@ -198,6 +178,11 @@ Deno.serve(async (req) => {
 
     return jsonOk(req, { students: created });
   } catch {
+    try {
+      await compensate(adminClient());
+    } catch {
+      /* ignore */
+    }
     console.error("create-students unexpected error");
     return jsonErr(req, "internal", "Unexpected error");
   }

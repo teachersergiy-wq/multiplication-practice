@@ -1,4 +1,8 @@
 begin;
+select tests.ok(not has_table_privilege('authenticated', 'public.assessment_questions', 'insert'), 'authenticated cannot INSERT assessment_questions');
+select tests.ok(not has_table_privilege('authenticated', 'public.assessment_questions', 'update'), 'authenticated cannot UPDATE assessment_questions');
+select tests.ok(not has_table_privilege('authenticated', 'public.assessment_questions', 'delete'), 'authenticated cannot DELETE assessment_questions');
+select tests.ok(not has_table_privilege('anon', 'public.assessment_questions', 'select'), 'anon cannot SELECT assessment_questions');
 do $$
 declare
   teacher_id uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa20';
@@ -22,17 +26,17 @@ begin
   values (template_id, teacher_id, subject_id, 3, 'R2 draft', 'draft');
   insert into public.assessment_questions (template_id, position, question_type, prompt)
   values (template_id, 1, 'numeric', '{"text":"1+1"}'::jsonb) returning id into qid;
-  perform set_config('tests.teacher_id', teacher_id::text, true);
-  perform set_config('tests.student_id', student_id::text, true);
-  perform set_config('tests.template_id', template_id::text, true);
-  perform set_config('tests.qid', qid::text, true);
+  perform tests.set_jwt(student_id);
+  if exists (select 1 from public.assessment_questions q where q.id = qid) then
+    perform tests.fail('student can read assessment_questions');
+  end if;
+  perform tests.set_jwt(teacher_id);
+  update public.assessment_templates set status = 'published' where id = template_id;
+  perform tests.clear_jwt();
+  if exists (select 1 from public.assessment_templates where id = template_id and status = 'published') then
+    perform tests.fail('client was able to set status=published');
+  end if;
+  perform tests.ok(exists (select 1 from public.assessment_templates where id = template_id and status = 'draft'), 'template remains draft');
 end;
 $$;
-select tests.set_jwt(current_setting('tests.student_id')::uuid);
-select tests.ok(not exists (select 1 from public.assessment_questions q where q.id = current_setting('tests.qid')::uuid), 'student cannot read assessment_questions');
-select tests.set_jwt(current_setting('tests.teacher_id')::uuid);
-select tests.throws(format($q$ insert into public.assessment_questions (template_id, position, question_type, prompt) values (%L, 2, 'numeric', '{}'::jsonb) $q$, current_setting('tests.template_id')), 'teacher cannot insert assessment_questions directly');
-select tests.updates_zero_rows(format('update public.assessment_templates set status = ''published'' where id = %L', current_setting('tests.template_id')), 'client cannot set status=published');
-select tests.clear_jwt();
-select tests.ok(exists (select 1 from public.assessment_templates where id = current_setting('tests.template_id')::uuid and status = 'draft'), 'template remains draft');
 rollback;

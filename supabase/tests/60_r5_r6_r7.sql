@@ -1,4 +1,7 @@
 begin;
+select tests.ok(not has_table_privilege('authenticated', 'private.allowed_teachers', 'select'), 'authenticated cannot SELECT private.allowed_teachers');
+select tests.ok(not has_function_privilege('authenticated', 'private.publish_assessment(uuid)', 'execute'), 'authenticated cannot EXECUTE publish_assessment');
+select tests.ok(not has_function_privilege('authenticated', 'private.create_student_records(uuid,text,text,uuid,text)', 'execute'), 'authenticated cannot EXECUTE create_student_records');
 do $$
 declare
   teacher_id uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa30';
@@ -29,22 +32,6 @@ begin
     perform tests.fail('second in_progress attempt should fail unique index');
   exception when unique_violation then null;
   end;
-  perform tests.set_jwt(teacher_id);
-  begin
-    perform 1 from private.allowed_teachers limit 1;
-    perform tests.fail('authenticated must not read private.allowed_teachers');
-  exception when insufficient_privilege then null;
-  when others then
-    if sqlerrm not like '%permission%' and sqlerrm not like '%denied%' then perform tests.fail('unexpected: ' || sqlerrm); end if;
-  end;
-  begin
-    perform private.publish_assessment(template_id);
-    perform tests.fail('authenticated must not execute publish_assessment');
-  exception when insufficient_privilege then null;
-  when others then
-    if sqlerrm not like '%permission%' and sqlerrm not like '%denied%' then perform tests.fail('unexpected publish: ' || sqlerrm); end if;
-  end;
-  perform tests.clear_jwt();
   perform tests.ok(true, '60_r5_r6_r7 completed');
 end;
 $$;

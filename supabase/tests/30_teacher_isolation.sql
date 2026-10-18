@@ -11,11 +11,8 @@ declare
   subject_id uuid;
   template_b uuid := 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01';
 begin
-  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
-  values
-    (teacher_a, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'iso-a@test.local', crypt('x', gen_salt('bf')), now(), now(), now()),
-    (teacher_b, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'iso-b@test.local', crypt('x', gen_salt('bf')), now(), now(), now())
-  on conflict (id) do nothing;
+  perform tests.ensure_auth_user(teacher_a, 'iso-a@test.local');
+  perform tests.ensure_auth_user(teacher_b, 'iso-b@test.local');
 
   insert into public.profiles (id, role, full_name, generated_nickname)
   values
@@ -41,11 +38,9 @@ begin
   perform set_config('tests.teacher_b', teacher_b::text, true);
   perform set_config('tests.class_b', class_b::text, true);
   perform set_config('tests.template_b', template_b::text, true);
-  perform set_config('tests.template_b_title', 'B private draft', true);
 end;
 $$;
 
--- Teacher A cannot see teacher B template.
 select tests.set_jwt(current_setting('tests.teacher_a')::uuid);
 select tests.ok(
   not exists (
@@ -55,7 +50,6 @@ select tests.ok(
   'teacher A does not see teacher B template'
 );
 
--- Teacher A UPDATE on B template is silently denied by RLS (0 rows), not an exception.
 select tests.updates_zero_rows(
   format(
     'update public.assessment_templates set title = ''hacked'' where id = %L',
@@ -64,7 +58,6 @@ select tests.updates_zero_rows(
   'teacher A must not update teacher B template'
 );
 
--- Confirm title unchanged as postgres.
 select tests.clear_jwt();
 select tests.ok(
   exists (
@@ -75,7 +68,6 @@ select tests.ok(
   'teacher B template title unchanged after A update attempt'
 );
 
--- Teacher A cannot manage teacher B class_subjects (WITH CHECK / USING fail → error).
 select tests.set_jwt(current_setting('tests.teacher_a')::uuid);
 select tests.throws(
   format(

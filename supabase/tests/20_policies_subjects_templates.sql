@@ -13,12 +13,9 @@ declare
   subject_other uuid;
   template_id uuid;
 begin
-  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
-  values
-    (teacher_a, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'teacher-a@test.local', crypt('x', gen_salt('bf')), now(), now(), now()),
-    (teacher_b, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'teacher-b@test.local', crypt('x', gen_salt('bf')), now(), now(), now()),
-    (student_a, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'student-a@test.local', crypt('x', gen_salt('bf')), now(), now(), now())
-  on conflict (id) do nothing;
+  perform tests.ensure_auth_user(teacher_a, 'teacher-a@test.local');
+  perform tests.ensure_auth_user(teacher_b, 'teacher-b@test.local');
+  perform tests.ensure_auth_user(student_a, 'student-a@test.local');
 
   insert into public.profiles (id, role, full_name, generated_nickname, student_login_code)
   values
@@ -38,7 +35,6 @@ begin
   values ('custom-g0', 'Custom G0', 'teacher owned', 'C', false, teacher_a)
   returning id into subject_custom;
 
-  -- Subject owned by teacher B, not linked to student's class → student must not see it.
   insert into public.subjects (code, name, description, icon, is_system, created_by)
   values ('custom-g0-other', 'Other Custom', 'other teacher', 'O', false, teacher_b)
   returning id into subject_other;
@@ -66,7 +62,6 @@ begin
 end;
 $$;
 
--- Student can read teacher-created subject of assigned test.
 select tests.set_jwt(current_setting('tests.student_a')::uuid);
 select tests.ok(
   exists (
@@ -76,7 +71,6 @@ select tests.ok(
   'student reads custom subject of assigned test'
 );
 
--- Student must not read unrelated custom subject from another teacher.
 select tests.ok(
   not exists (
     select 1 from public.subjects s
@@ -85,8 +79,6 @@ select tests.ok(
   'student does not read unrelated custom subject'
 );
 
--- Teacher cannot modify multiplication_level_configs (no policy + optional grant path).
--- Prefer zero-rows / error: after manage policy drop, UPDATE has no policy → RLS denies.
 select tests.set_jwt(current_setting('tests.teacher_a')::uuid);
 do $$
 declare
@@ -102,17 +94,14 @@ begin
     perform tests.fail(format('teacher must not update multiplication_level_configs (rows=%s)', n));
   end if;
 exception
-  when insufficient_privilege then
-    null; -- also acceptable: no UPDATE grant
+  when insufficient_privilege then null;
   when others then
-    -- RLS denial may surface as different SQLSTATE depending on path
     if sqlerrm not like '%policy%' and sqlerrm not like '%permission%' then
       perform tests.fail('unexpected error updating multiplication_level_configs: ' || sqlerrm);
     end if;
 end;
 $$;
 
--- Insert template as published must be rejected (WITH CHECK).
 select tests.set_jwt(current_setting('tests.teacher_a')::uuid);
 select tests.throws(
   format(
@@ -126,7 +115,6 @@ select tests.throws(
   'insert template with status=published must fail'
 );
 
--- Draft insert allowed.
 select tests.set_jwt(current_setting('tests.teacher_a')::uuid);
 do $$
 begin
@@ -144,7 +132,6 @@ exception
 end;
 $$;
 
--- Client cannot insert into assessment_attempts (no GRANT).
 select tests.set_jwt(current_setting('tests.student_a')::uuid);
 select tests.throws(
   format(

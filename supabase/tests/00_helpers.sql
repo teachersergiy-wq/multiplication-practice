@@ -2,6 +2,7 @@
 -- Simulates RLS context via request.jwt.claim.* and SET ROLE.
 -- Failures RAISE EXCEPTION. No pgTAP required.
 
+create extension if not exists pgcrypto with schema extensions;
 create schema if not exists tests;
 
 create or replace function tests.fail(msg text)
@@ -36,10 +37,8 @@ begin
     execute sql;
   exception
     when others then
-      -- Expected path: statement failed.
       return;
   end;
-  -- Fell through without exception.
   perform tests.fail(msg || ' (expected error, got success)');
 end;
 $$;
@@ -82,7 +81,66 @@ begin
 end;
 $$;
 
--- Allow test helpers to run while SET ROLE anon/authenticated is active.
+-- Minimal auth.users row compatible with Supabase GoTrue schema.
+create or replace function tests.ensure_auth_user(p_id uuid, p_email text)
+returns void
+language plpgsql
+as $$
+begin
+  insert into auth.users (
+    id,
+    instance_id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    recovery_sent_at,
+    last_sign_in_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at,
+    confirmation_token,
+    email_change,
+    email_change_token_new,
+    recovery_token
+  ) values (
+    p_id,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    p_email,
+    crypt('test-password', gen_salt('bf')),
+    now(),
+    now(),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    now(),
+    now(),
+    '',
+    '',
+    '',
+    ''
+  )
+  on conflict (id) do nothing;
+exception
+  when undefined_function then
+    -- gen_salt/crypt in extensions schema
+    insert into auth.users (
+      id, instance_id, aud, role, email, encrypted_password,
+      email_confirmed_at, created_at, updated_at,
+      confirmation_token, email_change, email_change_token_new, recovery_token
+    ) values (
+      p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+      p_email, extensions.crypt('test-password', extensions.gen_salt('bf')),
+      now(), now(), now(), '', '', '', ''
+    )
+    on conflict (id) do nothing;
+end;
+$$;
+
 grant usage on schema tests to anon, authenticated;
 grant execute on all functions in schema tests to anon, authenticated;
 alter default privileges in schema tests grant execute on functions to anon, authenticated;

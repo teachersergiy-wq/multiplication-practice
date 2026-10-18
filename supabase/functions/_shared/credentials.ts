@@ -32,11 +32,15 @@ export function studentEmail(login: string, domain: string): string {
   return `${login.toLowerCase()}@${domain}`;
 }
 
+/** Required env; no production default (review #7). */
 export function getStudentEmailDomain(): string {
-  const d = (Deno.env.get("STUDENT_EMAIL_DOMAIN") ?? "students.local.invalid").trim()
-    .toLowerCase();
-  if (!d || d.includes("@") || d.includes("*")) {
-    throw new Error("STUDENT_EMAIL_DOMAIN misconfigured");
+  const raw = Deno.env.get("STUDENT_EMAIL_DOMAIN");
+  if (raw === undefined || raw.trim() === "") {
+    throw new Error("STUDENT_EMAIL_DOMAIN not set");
+  }
+  const d = raw.trim().toLowerCase();
+  if (d.includes("@") || d.includes("*")) {
+    throw new Error("STUDENT_EMAIL_DOMAIN invalid");
   }
   return d;
 }

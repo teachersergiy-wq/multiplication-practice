@@ -1,7 +1,6 @@
 /**
  * create-students — teacher only; own class; credentials per API_CONTRACT.
- * Auth is outside DB transactions → full compensation on any failure:
- * delete Auth users and DB rows created in this invocation; never return partial success.
+ * Full compensation on any failure; no partial success; no direct-table fallback.
  */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
@@ -28,15 +27,14 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jsonErr(req, "invalid_request", "POST required");
 
   const createdAuthIds: string[] = [];
+  const admin = adminClient();
 
-  const compensate = async (admin: ReturnType<typeof adminClient>) => {
+  const compensate = async () => {
     for (const id of createdAuthIds) {
       try {
-        await admin.from("class_students").delete().eq("student_id", id);
-        await admin.from("profiles").delete().eq("id", id);
         await admin.auth.admin.deleteUser(id);
       } catch {
-        console.error("compensation step failed");
+        console.error("compensation deleteUser failed");
       }
     }
   };
@@ -51,7 +49,6 @@ Deno.serve(async (req) => {
       return jsonErr(req, "unauthenticated", "Valid access token required");
     }
 
-    const admin = adminClient();
     const teacher = await requireTeacher(admin, user.id);
     if (!teacher.ok) return jsonErr(req, teacher.code, teacher.message);
 
@@ -154,7 +151,7 @@ Deno.serve(async (req) => {
       }
 
       if (!authId) {
-        await compensate(admin);
+        await compensate();
         return jsonErr(req, "internal", "Failed to allocate unique student credentials");
       }
 
@@ -168,7 +165,7 @@ Deno.serve(async (req) => {
       });
 
       if (rpcErr) {
-        await compensate(admin);
+        await compensate();
         console.error("create_student_records failed");
         return jsonErr(req, "internal", "Failed to create student records");
       }
@@ -178,11 +175,7 @@ Deno.serve(async (req) => {
 
     return jsonOk(req, { students: created });
   } catch {
-    try {
-      await compensate(adminClient());
-    } catch {
-      /* ignore */
-    }
+    await compensate();
     console.error("create-students unexpected error");
     return jsonErr(req, "internal", "Unexpected error");
   }

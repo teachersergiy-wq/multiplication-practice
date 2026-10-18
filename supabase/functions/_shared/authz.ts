@@ -31,17 +31,20 @@ export async function teacherOwnsClass(
   return !!data;
 }
 
+/** Two-step lookup: no FK between class_students and class_teachers for PostgREST embed. */
 export async function teacherOwnsStudent(
   admin: SupabaseClient,
   teacherId: string,
   studentId: string,
 ): Promise<{ classId: string } | null> {
-  const { data, error } = await admin
+  const { data: link, error: e1 } = await admin
     .from("class_students")
-    .select("class_id, class_teachers!inner(teacher_id)")
+    .select("class_id")
     .eq("student_id", studentId)
-    .eq("class_teachers.teacher_id", teacherId)
     .maybeSingle();
-  if (error || !data) return null;
-  return { classId: data.class_id as string };
+  if (e1 || !link?.class_id) return null;
+
+  const owns = await teacherOwnsClass(admin, teacherId, link.class_id as string);
+  if (!owns) return null;
+  return { classId: link.class_id as string };
 }

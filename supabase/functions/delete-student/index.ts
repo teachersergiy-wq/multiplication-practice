@@ -1,4 +1,4 @@
-/** delete-student — teacher, student in own class; cascades history via FK; removes Auth user. */
+/** delete-student — teacher, student in own class; delete Auth first (profile cascades). */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
@@ -45,19 +45,14 @@ Deno.serve(async (req) => {
     const owned = await teacherOwnsStudent(admin, user.id, body.studentId);
     if (!owned) return jsonErr(req, "not_found", "Student not found");
 
-    // DB first (profiles PK = auth user id; class_students / attempts cascade)
-    const { error: delProf } = await admin.from("profiles").delete().eq("id", body.studentId);
-    if (delProf) {
-      console.error("profile delete failed");
-      return jsonErr(req, "internal", "Failed to delete student profile");
-    }
-
     const { error: delAuth } = await admin.auth.admin.deleteUser(body.studentId);
     if (delAuth) {
-      // Profile already gone; report internal so operator can clean Auth manually
-      console.error("auth deleteUser failed after profile delete");
-      return jsonErr(req, "internal", "Student profile removed but Auth cleanup failed");
+      console.error("auth deleteUser failed");
+      return jsonErr(req, "internal", "Failed to delete student");
     }
+
+    // If profile remains (no FK from auth.users), remove explicitly
+    await admin.from("profiles").delete().eq("id", body.studentId);
 
     return jsonOk(req, { deleted: true as const });
   } catch {

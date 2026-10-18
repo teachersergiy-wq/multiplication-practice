@@ -6,7 +6,8 @@ project_id = "multiplication-practice"
 [api]
 enabled = true
 port = 54321
-schemas = ["public", "private", "graphql_public"]
+# Do not expose private schema via PostgREST (review #6).
+schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 

@@ -3,10 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/domain.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.58.0",
@@ -21,3 +25,4 @@
     "vite": "7.3.7"
   }
 }
+

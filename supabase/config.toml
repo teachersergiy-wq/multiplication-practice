@@ -6,7 +6,7 @@ project_id = "multiplication-practice"
 [api]
 enabled = true
 port = 54321
-schemas = ["public", "private", "graphql_public"]
+schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
@@ -35,9 +35,7 @@ enabled = false
 enabled = true
 site_url = "http://127.0.0.1:5173"
 additional_redirect_urls = ["http://127.0.0.1:5173"]
-# Student passwords are 6 characters (2 letters + 4 digits) per API_CONTRACT §4.
 minimum_password_length = 6
-# Public self-signup is disabled; teachers/students are provisioned by Edge Functions.
 enable_signup = false
 
 [auth.email]
@@ -47,5 +45,14 @@ enable_confirmations = false
 [auth.sms]
 enable_signup = false
 
-# Per-function verify_jwt is set under [functions.<name>] when a function exists.
-# Do not put verify_jwt on a bare [functions] table — the CLI rejects it.
+[functions.provision-teacher]
+verify_jwt = true
+
+[functions.create-students]
+verify_jwt = true
+
+[functions.reset-student-password]
+verify_jwt = true
+
+[functions.delete-student]
+verify_jwt = true

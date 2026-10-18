@@ -1,7 +1,7 @@
 /**
- * provision-teacher — API_CONTRACT §4 / FunctionContracts["provision-teacher"]
+ * provision-teacher — API_CONTRACT / FunctionContracts["provision-teacher"]
  * Role: authenticated (may not have a profile yet).
- * Allowlist: private.allowed_teachers by email (owner-managed).
+ * Allowlist + atomic create via public.api_* (service_role only; private not in PostgREST).
  */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
@@ -23,7 +23,6 @@ function asTrimmedString(v: unknown, max: number): string | null {
 Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
-
   if (req.method !== "POST") {
     return jsonErr(req, "invalid_request", "POST required");
   }
@@ -38,6 +37,10 @@ Deno.serve(async (req) => {
       return jsonErr(req, "unauthenticated", "Valid access token required");
     }
 
+    if (!user.email_confirmed_at) {
+      return jsonErr(req, "forbidden", "Email is not confirmed");
+    }
+
     const email = (user.email ?? "").toLowerCase().trim();
     if (!email) {
       return jsonErr(req, "forbidden", "Account has no email");
@@ -45,68 +48,28 @@ Deno.serve(async (req) => {
 
     const admin = adminClient();
 
-    // R6 allowlist
-    const { data: allowed, error: allowErr } = await admin
-      .schema("private")
-      .from("allowed_teachers")
-      .select("email")
-      .eq("email", email)
-      .maybeSingle();
+    const { data: allowed, error: allowErr } = await admin.rpc(
+      "api_is_allowed_teacher",
+      { p_email: email },
+    );
     if (allowErr) {
-      console.error("allowed_teachers lookup failed");
+      console.error("allowlist rpc failed");
       return jsonErr(req, "internal", "Allowlist lookup failed");
     }
-    if (!allowed) {
+    if (allowed !== true) {
       return jsonErr(req, "forbidden", "Email is not on the teacher allowlist");
     }
 
-    // Idempotent: existing teacher profile
-    const { data: existing, error: profErr } = await admin
-      .from("profiles")
-      .select("id, role")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (profErr) {
-      console.error("profile lookup failed");
-      return jsonErr(req, "internal", "Profile lookup failed");
-    }
-
-    if (existing) {
-      if (existing.role !== "teacher") {
-        return jsonErr(req, "forbidden", "Account is not a teacher");
+    let body: Body = {};
+    const raw = await req.text();
+    if (raw && raw.trim().length > 0) {
+      try {
+        body = JSON.parse(raw) as Body;
+      } catch {
+        return jsonErr(req, "invalid_request", "JSON body required");
       }
-      const { data: link } = await admin
-        .from("class_teachers")
-        .select("class_id, classes!inner(id, school_id)")
-        .eq("teacher_id", user.id)
-        .limit(1)
-        .maybeSingle();
-
-      const classId = (link as { class_id?: string } | null)?.class_id;
-      const schoolId = (
-        link as { classes?: { school_id?: string } } | null
-      )?.classes?.school_id;
-
-      if (!classId || !schoolId) {
-        return jsonErr(req, "internal", "Teacher profile missing class link");
-      }
-
-      return jsonOk(req, {
-        profileId: user.id,
-        schoolId,
-        classId,
-        created: false,
-      });
     }
 
-    let body: Body;
-    try {
-      body = (await req.json()) as Body;
-    } catch {
-      return jsonErr(req, "invalid_request", "JSON body required");
-    }
-
-    // Reject unknown top-level fields
     const allowedKeys = new Set(["fullName", "schoolName", "className"]);
     for (const k of Object.keys(body as Record<string, unknown>)) {
       if (!allowedKeys.has(k)) {
@@ -115,64 +78,54 @@ Deno.serve(async (req) => {
     }
 
     const fullName = asTrimmedString(body.fullName, 160);
-    if (!fullName || fullName.length < 2) {
-      return jsonErr(req, "invalid_request", "fullName required (2–160 chars)");
-    }
-    const schoolName =
-      asTrimmedString(body.schoolName, 160) ?? "Моя школа";
+    const schoolName = asTrimmedString(body.schoolName, 160) ?? "Моя школа";
     const className = asTrimmedString(body.className, 80) ?? "Мій клас";
 
-    const nick =
-      "Учитель-" + user.id.replaceAll("-", "").slice(0, 8);
+    if (!fullName || fullName.length < 2) {
+      const { data: probe, error: probeErr } = await admin.rpc("api_provision_teacher", {
+        p_user_id: user.id,
+        p_full_name: fullName ?? "",
+        p_school_name: schoolName,
+        p_class_name: className,
+      });
+      if (probeErr) {
+        const msg = probeErr.message ?? "";
+        if (msg.includes("forbidden")) {
+          return jsonErr(req, "forbidden", "Not allowed to provision as teacher");
+        }
+        return jsonErr(req, "invalid_request", "fullName required (2–160 chars)");
+      }
+      return jsonOk(req, probe as {
+        profileId: string;
+        schoolId: string;
+        classId: string;
+        created: boolean;
+      });
+    }
 
-    const { error: insProfErr } = await admin.from("profiles").insert({
-      id: user.id,
-      role: "teacher",
-      full_name: fullName,
-      generated_nickname: nick,
-      student_login_code: null,
+    const { data, error } = await admin.rpc("api_provision_teacher", {
+      p_user_id: user.id,
+      p_full_name: fullName,
+      p_school_name: schoolName,
+      p_class_name: className,
     });
-    if (insProfErr) {
-      console.error("profile insert failed");
-      return jsonErr(req, "internal", "Failed to create profile");
+
+    if (error) {
+      const msg = error.message ?? "";
+      if (msg.includes("forbidden")) {
+        return jsonErr(req, "forbidden", "Not allowed to provision as teacher");
+      }
+      console.error("provision rpc failed");
+      return jsonErr(req, "internal", "Provisioning failed");
     }
 
-    const { data: school, error: schoolErr } = await admin
-      .from("schools")
-      .insert({ name: schoolName })
-      .select("id")
-      .single();
-    if (schoolErr || !school) {
-      console.error("school insert failed");
-      return jsonErr(req, "internal", "Failed to create school");
-    }
-
-    const { data: cls, error: classErr } = await admin
-      .from("classes")
-      .insert({ school_id: school.id, name: className })
-      .select("id")
-      .single();
-    if (classErr || !cls) {
-      console.error("class insert failed");
-      return jsonErr(req, "internal", "Failed to create class");
-    }
-
-    const { error: linkErr } = await admin.from("class_teachers").insert({
-      class_id: cls.id,
-      teacher_id: user.id,
+    return jsonOk(req, data as {
+      profileId: string;
+      schoolId: string;
+      classId: string;
+      created: boolean;
     });
-    if (linkErr) {
-      console.error("class_teachers insert failed");
-      return jsonErr(req, "internal", "Failed to link teacher to class");
-    }
-
-    return jsonOk(req, {
-      profileId: user.id,
-      schoolId: school.id,
-      classId: cls.id,
-      created: true,
-    });
-  } catch (e) {
+  } catch {
     console.error("provision-teacher unexpected error");
     return jsonErr(req, "internal", "Unexpected error");
   }

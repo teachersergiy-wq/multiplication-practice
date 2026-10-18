@@ -7,10 +7,7 @@ declare
   subject_id uuid;
   template_id uuid := 'dddddddd-dddd-dddd-dddd-dddddddddd10';
 begin
-  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
-  values (teacher_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-          'r1-teacher@test.local', crypt('x', gen_salt('bf')), now(), now(), now())
-  on conflict (id) do nothing;
+  perform tests.ensure_auth_user(teacher_id, 'r1-teacher@test.local');
 
   insert into public.profiles (id, role, full_name, generated_nickname)
   values (teacher_id, 'teacher', 'R1 Teacher', 'r1-t')

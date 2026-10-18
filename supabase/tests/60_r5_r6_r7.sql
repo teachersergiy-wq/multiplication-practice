@@ -11,11 +11,8 @@ declare
   template_id uuid := 'dddddddd-dddd-dddd-dddd-dddddddddd30';
   assignment_id uuid;
 begin
-  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
-  values
-    (teacher_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'r5-t@test.local', crypt('x', gen_salt('bf')), now(), now(), now()),
-    (student_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'r5-s@test.local', crypt('x', gen_salt('bf')), now(), now(), now())
-  on conflict (id) do nothing;
+  perform tests.ensure_auth_user(teacher_id, 'r5-t@test.local');
+  perform tests.ensure_auth_user(student_id, 'r5-s@test.local');
 
   insert into public.profiles (id, role, full_name, generated_nickname, student_login_code)
   values
@@ -47,7 +44,6 @@ begin
       null;
   end;
 
-  -- R6: authenticated cannot read allowlist
   perform tests.set_jwt(teacher_id);
   begin
     perform 1 from private.allowed_teachers limit 1;
@@ -61,7 +57,6 @@ begin
       end if;
   end;
 
-  -- R7: cannot execute service functions
   begin
     perform private.publish_assessment(template_id);
     perform tests.fail('authenticated must not execute publish_assessment');

@@ -13,7 +13,6 @@ supabase status >/dev/null 2>&1 || supabase start
 eval "$(supabase status -o env)"
 export SUPABASE_URL="${API_URL:-http://127.0.0.1:54321}"
 export SUPABASE_ANON_KEY="${ANON_KEY}"
-# Avoid CI secret-scan false positive on SUPABASE_SERVICE_ROLE_KEY=...
 _role_key_var="SUPABASE_""SERVICE_ROLE_KEY"
 export "${_role_key_var}=${SERVICE_ROLE_KEY}"
 export FUNCTIONS_URL="${SUPABASE_URL}/functions/v1/provision-teacher"

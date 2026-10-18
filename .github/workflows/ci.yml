@@ -1,0 +1,106 @@
+name: CI
+
+# Checks run on GitHub, not on a developer machine, so a result here is independent
+# of whoever wrote the change. Nothing in this workflow uses repository secrets and
+# nothing touches the production Supabase project.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web (types, tests, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type-check and build
+        run: npm run build
+      - name: Unit tests (skipped while the project has no test script)
+        run: npm run test --if-present
+      - name: Type-check the API contract (skipped until contracts/ exists)
+        run: |
+          if [ -f contracts/tsconfig.json ]; then
+            npx tsc -p contracts/tsconfig.json
+          else
+            echo "contracts/tsconfig.json not present yet; skipped"
+          fi
+
+  audit:
+    name: Dependency audit (informational)
+    runs-on: ubuntu-latest
+    # An advisory published tomorrow must not turn every unrelated PR red,
+    # but a failure here still shows as a warning and must be triaged.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm audit --audit-level=high
+
+  secrets:
+    name: Secret and env-file scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if an env file is tracked
+        run: |
+          tracked="$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v -E '(^|/)\.env\.example$' || true)"
+          if [ -n "$tracked" ]; then
+            echo "Tracked env file(s):"; echo "$tracked"; exit 1
+          fi
+      - name: Fail on secret-looking content
+        run: |
+          pattern='(eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}|sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|SUPABASE_SERVICE_ROLE_KEY[[:space:]]*=[[:space:]]*[^[:space:]]+)'
+          if git grep -InE "$pattern" -- . ':(exclude)package-lock.json'; then
+            echo "Secret-looking content found (see lines above). Remove it and rotate the credential."
+            exit 1
+          fi
+
+  db-tests:
+    name: Database tests (local Supabase)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect database tests
+        id: detect
+        run: |
+          if [ -f supabase/config.toml ] && ls supabase/tests/[0-9][0-9]_*.sql >/dev/null 2>&1; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipped: needs supabase/config.toml and numbered supabase/tests/NN_*.sql files."
+          fi
+      - uses: supabase/setup-cli@v1
+        if: steps.detect.outputs.run == 'true'
+        with:
+          version: latest
+      - name: Start local Supabase (applies all migrations)
+        if: steps.detect.outputs.run == 'true'
+        run: supabase start
+      - name: Run SQL tests
+        if: steps.detect.outputs.run == 'true'
+        env:
+          # The documented local-stack default; a throwaway database inside this runner only.
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -e
+          for f in supabase/tests/[0-9][0-9]_*.sql; do
+            echo "== $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done

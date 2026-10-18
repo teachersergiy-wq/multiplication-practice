@@ -1,6 +1,6 @@
 -- Shared helpers for security tests. Safe to re-run.
--- Simulates RLS context via request.jwt.claim.* and SET LOCAL ROLE.
--- Failures RAISE EXCEPTION. No pgTAP required.
+-- JWT claims for auth.uid() + SESSION AUTHORIZATION so RLS and GRANT apply
+-- when CI connects as postgres (superuser otherwise bypasses both).
 
 create extension if not exists pgcrypto with schema extensions;
 create schema if not exists tests;
@@ -62,7 +62,7 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', uid::text, true);
   perform set_config('request.jwt.claim.role', role_name, true);
-  execute format('set local role %I', role_name);
+  execute format('set local session authorization %I', role_name);
 end;
 $$;
 
@@ -73,7 +73,7 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', '', true);
   perform set_config('request.jwt.claim.role', '', true);
-  execute 'set local role none';
+  execute 'set local session authorization default';
 end;
 $$;
 

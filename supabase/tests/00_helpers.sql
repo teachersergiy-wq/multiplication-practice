@@ -1,5 +1,5 @@
 -- Shared helpers for security tests. Safe to re-run.
--- Simulates RLS context via request.jwt.claim.* and SET ROLE.
+-- Simulates RLS context via request.jwt.claim.* and SET LOCAL ROLE.
 -- Failures RAISE EXCEPTION. No pgTAP required.
 
 create extension if not exists pgcrypto with schema extensions;
@@ -26,8 +26,6 @@ end;
 $$;
 
 -- Expects the statement to raise. Any success is a failure.
--- Use for missing GRANTs / WITH CHECK violations that error.
--- Do NOT use for RLS UPDATE/SELECT that succeed with zero rows.
 create or replace function tests.throws(sql text, msg text)
 returns void
 language plpgsql
@@ -59,6 +57,7 @@ begin
 end;
 $$;
 
+-- JWT claims for auth.uid() + real session role so GRANT and RLS apply.
 create or replace function tests.set_jwt(uid uuid, role_name text default 'authenticated')
 returns void
 language plpgsql
@@ -66,7 +65,8 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', uid::text, true);
   perform set_config('request.jwt.claim.role', role_name, true);
-  perform set_config('role', role_name, true);
+  -- Must SET ROLE: postgres bypasses RLS and ignores REVOKE on functions.
+  execute format('set local role %I', role_name);
 end;
 $$;
 
@@ -77,7 +77,7 @@ as $$
 begin
   perform set_config('request.jwt.claim.sub', '', true);
   perform set_config('request.jwt.claim.role', '', true);
-  perform set_config('role', 'postgres', true);
+  execute 'set local role none';
 end;
 $$;
 
@@ -85,6 +85,8 @@ $$;
 create or replace function tests.ensure_auth_user(p_id uuid, p_email text)
 returns void
 language plpgsql
+security definer
+set search_path = auth, extensions, public, pg_temp
 as $$
 begin
   insert into auth.users (

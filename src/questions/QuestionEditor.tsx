@@ -20,7 +20,7 @@ export function QuestionEditor() {
   const [points, setPoints] = useState("1");
   const [timeLimit, setTimeLimit] = useState("");
   const [options, setOptions] = useState<string[]>(initialOptions);
-  const [correctIndex, setCorrectIndex] = useState(0);
+  const [correctIndex, setCorrectIndex] = useState<number | null>(null);
   const [correctIndexes, setCorrectIndexes] = useState<number[]>([]);
   const [items, setItems] = useState<string[]>(["", "", ""]);
   const [pairs, setPairs] = useState<{ left: string; right: string }[]>([{ left: "", right: "" }, { left: "", right: "" }]);
@@ -35,7 +35,7 @@ export function QuestionEditor() {
 
   function changeType(next: QuestionType) {
     setType(next); setErrors([]); setNotice("");
-    if (next === "single_choice") { setOptions(["", "", "", ""]); setCorrectIndexes([]); setCorrectIndex(0); }
+    if (next === "single_choice") { setOptions(["", "", "", ""]); setCorrectIndexes([]); setCorrectIndex(null); }
     if (next === "multiple_choice") { setOptions(["", "", ""]); setCorrectIndexes([]); }
     if (next === "ordering") setItems(["", "", ""]);
     if (next === "matching") setPairs([{ left: "", right: "" }, { left: "", right: "" }]);
@@ -102,7 +102,7 @@ export function QuestionEditor() {
             {options.map((option, index) => <div className="editor-list-row" key={index}>
               <input type={type === "single_choice" ? "radio" : "checkbox"} name="choice-answer" aria-label={`Позначити варіант ${index + 1} правильним`} checked={type === "single_choice" ? correctIndex === index : correctIndexes.includes(index)} onChange={() => type === "single_choice" ? setCorrectIndex(index) : setCorrectIndexes((current) => current.includes(index) ? current.filter((value) => value !== index) : [...current, index])} />
               <input aria-label={`Варіант ${index + 1}`} maxLength={LIMITS.optionText.max} value={option} onChange={(event) => setOptions((current) => current.map((value, i) => i === index ? event.target.value : value))} placeholder={`Варіант ${index + 1}`} />
-              <button type="button" aria-label={`Видалити варіант ${index + 1}`} disabled={options.length <= bounds.min} onClick={() => { setOptions((current) => current.filter((_, i) => i !== index)); setCorrectIndexes((current) => current.filter((i) => i !== index).map((i) => i > index ? i - 1 : i)); if (correctIndex >= index) setCorrectIndex((i) => Math.max(0, i - 1)); }}>×</button>
+              <button type="button" aria-label={`Видалити варіант ${index + 1}`} disabled={options.length <= bounds.min} onClick={() => { setOptions((current) => current.filter((_, i) => i !== index)); setCorrectIndexes((current) => current.filter((i) => i !== index).map((i) => i > index ? i - 1 : i)); if (correctIndex === index) setCorrectIndex(null); else if (correctIndex !== null && correctIndex > index) setCorrectIndex((i) => i === null ? null : i - 1); }}>×</button>
             </div>)}
             <button className="editor-secondary" type="button" disabled={options.length >= bounds.max} onClick={() => setOptions((current) => [...current, ""])}>＋ Додати варіант</button>
           </fieldset>}

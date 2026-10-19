@@ -69,3 +69,9 @@ verify_jwt = true
 
 [functions.reorder-questions]
 verify_jwt = true
+
+[functions.publish-assessment]
+verify_jwt = true
+
+[functions.clone-assessment]
+verify_jwt = true

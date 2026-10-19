@@ -98,7 +98,7 @@ function Dashboard() {
         </a>
         <nav className="topnav" aria-label="Головна навігація">
           <a className="active" href="#library">Моя бібліотека</a>
-          <a href="#builder">Конструктор</a>
+          <a href="#question-editor">Конструктор</a>
           <a href="#classes">Мої класи</a>
         </nav>
         {teacher ? (
@@ -170,6 +170,8 @@ function Dashboard() {
           <div className="builder-footnote"><span>⌘</span> Чернетки поки зберігаються у цьому браузері</div>
         </aside>
       </section>
+
+      <QuestionEditor />
 
       <footer className="footer" id="classes"><span>Маленькі кроки — великі відкриття.</span><span>Навчальна студія <b>✳</b> 2026</span></footer>
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрити">×</button></div>}

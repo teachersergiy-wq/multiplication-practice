@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { AssessmentDraft, QuestionType } from "./domain";
 import { grades, isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
 import { TeacherAccessGate, useTeacherIdentity } from "./auth/TeacherAccessGate";
+import { StudentManagement } from "./classes/StudentManagement";
 import { supabase } from "./lib/supabase";
 
 const storageKey = "learning-studio-assessment-drafts-v2";
@@ -171,9 +172,12 @@ function Dashboard() {
         </aside>
       </section>
 
+      {teacher && <StudentManagement />}
+
       <footer className="footer" id="classes"><span>Маленькі кроки — великі відкриття.</span><span>Навчальна студія <b>✳</b> 2026</span></footer>
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрити">×</button></div>}
     </main>
   );
 }
+
 

@@ -32,16 +32,19 @@ begin
 end;
 $$;
 
--- Client role cannot publish (WITH CHECK status = draft)
+-- Publishing a draft directly is rejected by the RLS WITH CHECK policy.
 select tests.set_jwt(current_setting('tests.teacher_id')::uuid);
 set local role authenticated;
-select tests.updates_zero_rows(
-  format(
-    'update public.assessment_templates set status = ''published'' where id = %L',
-    current_setting('tests.template_id')
-  ),
-  'authenticated cannot set status=published'
-);
+do $$
+begin
+  update public.assessment_templates
+     set status = 'published'
+   where id = current_setting('tests.template_id')::uuid;
+  perform tests.fail('authenticated must not set status=published');
+exception
+  when insufficient_privilege then null;
+end;
+$$;
 reset role;
 select tests.clear_jwt();
 

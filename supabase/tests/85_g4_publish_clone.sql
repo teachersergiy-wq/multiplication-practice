@@ -29,9 +29,9 @@ select tests.ok(
 
 do $$
 declare
-  tid uuid := 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01';
-  tid2 uuid := 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02';
-  tpl uuid := 'ffffffff-ffff-ffff-ffff-ffffffffffff01';
+  tid uuid := 'eeeeeeee-eeee-eeee-eeee-eeeeeeee0001';
+  tid2 uuid := 'eeeeeeee-eeee-eeee-eeee-eeeeeeee0002';
+  tpl uuid := 'ffffffff-ffff-ffff-ffff-ffffffffff01';
   subj uuid;
   qid uuid;
   pub jsonb;

@@ -2,9 +2,8 @@
  * Integration test: real HTTP call to provision-teacher Edge Function.
  * Local Supabase only. Run: bash supabase/tests/edge_provision_teacher.sh
  *
- * G2c: allowlist is seeded by direct insert into private.allowed_teachers
- * (service_role). Do not rely on public._test_allow_teacher — that helper
- * is dropped from the production migration chain.
+ * G2c: public._test_allow_teacher is NOT part of the production migration
+ * chain. The shell script recreates a temporary copy for local CI only.
  */
 import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -42,39 +41,14 @@ Deno.test("provision-teacher creates teacher then is idempotent", async () => {
   const email = `g1-edge-${crypto.randomUUID().slice(0, 8)}@test.local`;
   const password = "ab1234";
 
-  // Seed allowlist without the dropped public._test_allow_teacher helper.
-  const { error: allowErr } = await admin
-    .schema("private")
-    .from("allowed_teachers")
-    .upsert({ email: email.toLowerCase() }, { onConflict: "email" });
+  // Temporary helper is created by edge_provision_teacher.sh (test-only, not in migrations).
+  const { error: allowErr } = await admin.rpc("_test_allow_teacher", { p_email: email });
   if (allowErr) {
-    // Fallback: raw SQL via rpc if schema client is restricted
-    const { error: sqlErr } = await admin.rpc("exec_sql_for_tests" as never).catch?.(() => ({ error: allowErr })) ??
-      { error: allowErr };
-    // Prefer direct PostgREST on private if exposed to service_role; otherwise use SQL.
-    // service_role can use the REST API against private only if granted; use raw query via postgres if needed.
-    // Practical path for local CI: insert through a one-off SQL statement via the management API is not available.
-    // Re-create a temporary SECURITY DEFINER helper only for this test process, then drop it.
-    const recreateSql = `
-      create or replace function public._test_allow_teacher(p_email text)
-      returns void
-      language sql
-      security definer
-      set search_path = private, public, pg_temp
-      as $$ insert into private.allowed_teachers (email) values (lower(trim(p_email))) on conflict (email) do nothing; $$;
-      revoke all on function public._test_allow_teacher(text) from public, anon, authenticated;
-      grant execute on function public._test_allow_teacher(text) to service_role;
-    `;
-    // Deno/supabase-js has no generic exec; use the temporary function path.
-    void recreateSql;
-    const { error: allowErr2 } = await admin.rpc("_test_allow_teacher", { p_email: email });
-    if (allowErr2 && allowErr) {
-      throw new Error(`allowlist seed failed: ${allowErr.message}; rpc fallback: ${allowErr2.message}`);
-    }
+    throw new Error(
+      `allowlist seed failed: ${allowErr.message}. ` +
+        `Run via supabase/tests/edge_provision_teacher.sh so the temporary test helper exists.`,
+    );
   }
-
-  // If direct private insert worked, fine. If not, ensure via temporary helper created in test DB only.
-  // (CI applies migrations first, so _test_allow_teacher is dropped; we recreate it only in this process if needed.)
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
@@ -87,12 +61,6 @@ Deno.test("provision-teacher creates teacher then is idempotent", async () => {
   const userId = created.user.id;
 
   try {
-    // Ensure allowlist entry exists (idempotent).
-    await admin.rpc("_test_allow_teacher", { p_email: email }).catch(async () => {
-      // Function missing after G2c migration — create only for this test session, then use it.
-      // Note: this requires a SQL execution path. Prefer the shell script to seed via psql.
-    });
-
     const userClient = createClient(SUPABASE_URL, ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });

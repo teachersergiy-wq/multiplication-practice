@@ -46,6 +46,7 @@ enable_confirmations = false
 [auth.sms]
 enable_signup = false
 
+# --- G1/G2 ---
 [functions.provision-teacher]
 verify_jwt = true
 
@@ -58,6 +59,20 @@ verify_jwt = true
 [functions.delete-student]
 verify_jwt = true
 
+# --- G3 ---
+[functions.get-assessment-draft]
+verify_jwt = true
+
+[functions.upsert-question]
+verify_jwt = true
+
+[functions.delete-question]
+verify_jwt = true
+
+[functions.reorder-questions]
+verify_jwt = true
+
+# --- G4 ---
 [functions.publish-assessment]
 verify_jwt = true
 

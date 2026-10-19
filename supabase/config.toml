@@ -57,3 +57,9 @@ verify_jwt = true
 
 [functions.delete-student]
 verify_jwt = true
+
+[functions.publish-assessment]
+verify_jwt = true
+
+[functions.clone-assessment]
+verify_jwt = true

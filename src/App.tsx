@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AssessmentDraft, QuestionType } from "./domain";
 import { grades, isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
+import { TeacherAccessGate, useTeacherIdentity } from "./auth/TeacherAccessGate";
+import { supabase } from "./lib/supabase";
 
 const storageKey = "learning-studio-assessment-drafts-v2";
 const legacyStorageKey = "learning-studio-assessment-drafts-v1";
@@ -43,12 +45,17 @@ function readDrafts(): AssessmentDraft[] {
 }
 
 export function App() {
+  return supabase ? <TeacherAccessGate><Dashboard /></TeacherAccessGate> : <Dashboard />;
+}
+
+function Dashboard() {
   const [drafts, setDrafts] = useState<AssessmentDraft[]>(readDrafts);
   const [subjectCode, setSubjectCode] = useState("mathematics");
   const [grade, setGrade] = useState(3);
   const [questionType, setQuestionType] = useState<QuestionType>("numeric");
   const [title, setTitle] = useState("");
   const [notice, setNotice] = useState("");
+  const teacher = useTeacherIdentity();
 
   const visibleDrafts = useMemo(
     () => drafts.filter((draft) => draft.subjectId === subjectCode && draft.grade === grade),
@@ -94,7 +101,11 @@ export function App() {
           <a href="#builder">Конструктор</a>
           <a href="#classes">Мої класи</a>
         </nav>
-        <button className="profile-button" aria-label="Профіль учителя"><span>С</span><span className="profile-name">Світлана</span><span aria-hidden="true">⌄</span></button>
+        {teacher ? (
+          <button className="profile-button" aria-label={`Вийти з облікового запису ${teacher.email}`} onClick={() => void teacher.signOut()}>
+            <span>{teacher.displayName.slice(0, 1).toLocaleUpperCase("uk-UA")}</span><span className="profile-name">{teacher.displayName}</span><span aria-hidden="true">↪</span>
+          </button>
+        ) : <button className="profile-button" aria-label="Профіль учителя"><span>С</span><span className="profile-name">Світлана</span><span aria-hidden="true">⌄</span></button>}
       </header>
 
       <section className="hero" id="home">

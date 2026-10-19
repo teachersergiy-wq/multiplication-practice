@@ -9,7 +9,7 @@ interface ClassRow {
 }
 interface StudentRow {
   student_id: string;
-  profiles: { full_name: string; student_login_code: string } | null;
+  profiles: { full_name: string } | null;
 }
 
 export function StudentManagement() {
@@ -41,7 +41,7 @@ export function StudentManagement() {
   const loadStudents = useCallback(async () => {
     if (!client || !classId) { setStudents([]); return; }
     const { data, error } = await client.from("class_students")
-      .select("student_id, profiles!inner(full_name, student_login_code)")
+      .select("student_id, profiles!inner(full_name)")
       .eq("class_id", classId).order("student_id");
     if (error) {
       setMessage("Не вдалося завантажити учнів. Перевірте з’єднання й повторіть спробу.");
@@ -117,7 +117,7 @@ export function StudentManagement() {
         <div className="student-list">
           {students.map((item) => <article className="student-row" key={item.student_id}>
             <span className="student-avatar">{item.profiles?.full_name.slice(0, 1) ?? "У"}</span>
-            <strong>{item.profiles?.full_name ?? "Учень"}</strong><code>{item.profiles?.student_login_code}</code>
+            <strong>{item.profiles?.full_name ?? "Учень"}</strong>
             <button type="button" disabled={busy} onClick={() => void resetPassword(item.student_id)}>Новий пароль</button>
             <button type="button" className="student-delete" disabled={busy} onClick={() => void deleteStudent(item.student_id)}>Видалити</button>
           </article>)}

@@ -1,6 +1,9 @@
 /**
  * Integration test: real HTTP call to provision-teacher Edge Function.
  * Local Supabase only. Run: bash supabase/tests/edge_provision_teacher.sh
+ *
+ * G2c: public._test_allow_teacher is NOT part of the production migration
+ * chain. The shell script recreates a temporary copy for local CI only.
  */
 import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -38,9 +41,13 @@ Deno.test("provision-teacher creates teacher then is idempotent", async () => {
   const email = `g1-edge-${crypto.randomUUID().slice(0, 8)}@test.local`;
   const password = "ab1234";
 
+  // Temporary helper is created by edge_provision_teacher.sh (test-only, not in migrations).
   const { error: allowErr } = await admin.rpc("_test_allow_teacher", { p_email: email });
   if (allowErr) {
-    throw new Error(`allowlist seed failed: ${allowErr.message}`);
+    throw new Error(
+      `allowlist seed failed: ${allowErr.message}. ` +
+        `Run via supabase/tests/edge_provision_teacher.sh so the temporary test helper exists.`,
+    );
   }
 
   const { data: created, error: createErr } = await admin.auth.admin.createUser({

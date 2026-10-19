@@ -17,7 +17,6 @@ declare
   v_resp_type text;
   a text[];
   b text[];
-  i integer;
   v_num numeric;
   v_tol numeric;
   v_text text;
@@ -55,7 +54,6 @@ begin
     v_ok := a is not distinct from b;
 
   elsif p_question_type = 'matching' then
-    -- every key pair must appear in response pairs (order-independent)
     v_ok := not exists (
       select 1
       from jsonb_array_elements(coalesce(p_answer_key->'pairs', '[]'::jsonb)) kp
@@ -85,7 +83,6 @@ begin
     if not v_case then
       v_text := lower(v_text);
     end if;
-    -- collapse whitespace
     v_text := regexp_replace(v_text, '\s+', ' ', 'g');
     v_ok := false;
     for v_acc in
@@ -108,7 +105,10 @@ $$;
 revoke all on function private.score_response(public.question_type, jsonb, jsonb, numeric) from public, anon, authenticated;
 grant execute on function private.score_response(public.question_type, jsonb, jsonb, numeric) to service_role;
 
-create or replace function private.finalize_attempt(p_attempt_id uuid)
+-- Previous stub returned void; must drop before changing return type to jsonb.
+drop function if exists private.finalize_attempt(uuid);
+
+create function private.finalize_attempt(p_attempt_id uuid)
 returns jsonb
 language plpgsql
 security definer
@@ -139,7 +139,6 @@ begin
     raise exception 'not_found' using errcode = 'P0001';
   end if;
 
-  -- Idempotent: already finished
   if v_attempt.status <> 'in_progress' then
     v_percent := case when coalesce(v_attempt.max_score, 0) > 0
       then round((v_attempt.score / v_attempt.max_score) * 100, 2) else 0 end;
@@ -190,10 +189,6 @@ begin
     end if;
     v_score := v_score + coalesce(v_pts, 0);
 
-    -- Write scores (allowed when finishing; trigger checks in_progress+graded on INSERT/UPDATE of scores before status change)
-    -- Temporarily we update after status change path: disable by updating attempt status first? Trigger blocks scores while in_progress graded.
-    -- So: for graded, set status completed first is wrong for check constraint finished_at.
-    -- Approach: update responses with scores using a session flag, or replace trigger to allow when finishing.
     update public.assessment_responses
       set is_correct = v_correct,
           awarded_points = v_pts
@@ -241,8 +236,9 @@ begin
 end;
 $$;
 
--- Allow score writes during finalize: relax trigger when response already exists and we set scores together with finish.
--- Replace trigger function to allow updates that only set scores when attempt is being finalized via security definer path.
+revoke all on function private.finalize_attempt(uuid) from public, anon, authenticated;
+grant execute on function private.finalize_attempt(uuid) to service_role;
+
 create or replace function private.enforce_response_scores_null_until_finish()
 returns trigger
 language plpgsql
@@ -260,7 +256,6 @@ begin
   join public.assessment_templates t on t.id = a.template_id
   where at.id = new.attempt_id;
 
-  -- graded + in_progress: forbid non-null scores on INSERT; allow UPDATE from finalize (same session service_role)
   if v_mode = 'graded' and v_status = 'in_progress' and TG_OP = 'INSERT' then
     if new.is_correct is not null or new.awarded_points is not null then
       raise exception 'scores forbidden until attempt is finished';
@@ -324,14 +319,12 @@ begin
     raise exception 'not_found' using errcode = 'P0001';
   end if;
 
-  -- Existing in_progress
   select * into v_existing
   from public.assessment_attempts
   where assignment_id = p_assignment_id and student_id = p_student_id and status = 'in_progress'
   for update;
 
   if found then
-    -- compute deadline from started_at
     v_limit_sec := null;
     if v_tpl.settings ? 'totalTimeSeconds' then
       v_limit_sec := (v_tpl.settings->>'totalTimeSeconds')::integer;
@@ -350,7 +343,6 @@ begin
           set status = 'abandoned', finished_at = now(),
               elapsed_ms = (extract(epoch from (now() - started_at)) * 1000)::integer
         where id = v_existing.id;
-        -- fall through to maybe create new if retries allowed
         v_existing := null;
       else
         v_attempt_id := v_existing.id;
@@ -474,7 +466,6 @@ begin
   join public.assessment_templates t on t.id = a.template_id
   where a.id = v_attempt.assignment_id;
 
-  -- deadline
   v_limit_sec := null;
   if v_settings ? 'totalTimeSeconds' then
     v_limit_sec := (v_settings->>'totalTimeSeconds')::integer;
@@ -488,7 +479,6 @@ begin
     v_deadline := v_attempt.started_at + make_interval(secs => v_limit_sec + 15);
     if v_deadline <= now() then
       perform private.finalize_attempt(p_attempt_id);
-      -- mark abandoned if still in progress somehow
       update public.assessment_attempts set status = 'abandoned'
         where id = p_attempt_id and status = 'in_progress';
       raise exception 'attempt_expired' using errcode = 'P0001';
@@ -559,5 +549,3 @@ $$;
 
 revoke all on function public.api_finish_attempt(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.api_finish_attempt(uuid, uuid) to service_role;
-
-grant execute on function private.finalize_attempt(uuid) to service_role;

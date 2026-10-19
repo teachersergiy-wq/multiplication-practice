@@ -50,7 +50,7 @@ export function QuestionEditor() {
       case "multiple_choice": return { ...common, type, options, correctIndexes };
       case "ordering": return { ...common, type, itemsInCorrectOrder: items };
       case "matching": return { ...common, type, pairs };
-      case "numeric": return { ...common, type, value: Number(numericValue), ...(tolerance ? { tolerance: Number(tolerance) } : {}) };
+      case "numeric": return { ...common, type, value: numericValue.trim() ? Number(numericValue) : Number.NaN, ...(tolerance ? { tolerance: Number(tolerance) } : {}) };
       case "short_answer": return { ...common, type, accepted, caseSensitive };
     }
   }
@@ -72,8 +72,8 @@ export function QuestionEditor() {
       <strong>{question.promptText}</strong>
       {question.type === "true_false" && <p>Так &nbsp; / &nbsp; Ні</p>}
       {(question.type === "single_choice" || question.type === "multiple_choice") && <ol>{question.options.map((option, index) => <li key={index}>{option}</li>)}</ol>}
-      {question.type === "ordering" && <ol>{question.itemsInCorrectOrder.map((item, index) => <li key={index}>{item}</li>)}</ol>}
-      {question.type === "matching" && <ul>{question.pairs.map((pair, index) => <li key={index}>{pair.left}　↔　{pair.right}</li>)}</ul>}
+      {question.type === "ordering" && <ol>{[...question.itemsInCorrectOrder].reverse().map((item, index) => <li key={index}>{item}</li>)}</ol>}
+      {question.type === "matching" && <div className="preview-match-columns"><ul>{question.pairs.map((pair, index) => <li key={`left-${index}`}>{pair.left}</li>)}</ul><ul>{[...question.pairs].reverse().map((pair, index) => <li key={`right-${index}`}>{pair.right}</li>)}</ul></div>}
       {(question.type === "numeric" || question.type === "short_answer") && <p className="preview-response">Поле для відповіді учня</p>}
     </article>;
   }

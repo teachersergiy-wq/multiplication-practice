@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { AssessmentDraft, QuestionType } from "./domain";
 import { grades, isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
 import { TeacherAccessGate, useTeacherIdentity } from "./auth/TeacherAccessGate";
+import { QuestionEditor } from "./questions/QuestionEditor";
 import { supabase } from "./lib/supabase";
 
 const storageKey = "learning-studio-assessment-drafts-v2";

@@ -1,6 +1,5 @@
 -- Shared helpers for security tests. Safe to re-run.
--- Simulates RLS context via request.jwt.claim.* and SET ROLE.
--- Failures RAISE EXCEPTION. No pgTAP required.
+-- Matches main/G0: JWT claims for auth.uid(); callers use SET LOCAL ROLE when needed.
 
 create extension if not exists pgcrypto with schema extensions;
 create schema if not exists tests;
@@ -25,9 +24,6 @@ begin
 end;
 $$;
 
--- Expects the statement to raise. Any success is a failure.
--- Use for missing GRANTs / WITH CHECK violations that error.
--- Do NOT use for RLS UPDATE/SELECT that succeed with zero rows.
 create or replace function tests.throws(sql text, msg text)
 returns void
 language plpgsql
@@ -43,7 +39,6 @@ begin
 end;
 $$;
 
--- Expects DML to affect zero rows (typical silent RLS deny on UPDATE/DELETE).
 create or replace function tests.updates_zero_rows(sql text, msg text)
 returns void
 language plpgsql
@@ -81,53 +76,26 @@ begin
 end;
 $$;
 
--- Minimal auth.users row compatible with Supabase GoTrue schema.
 create or replace function tests.ensure_auth_user(p_id uuid, p_email text)
 returns void
 language plpgsql
 as $$
 begin
   insert into auth.users (
-    id,
-    instance_id,
-    aud,
-    role,
-    email,
-    encrypted_password,
-    email_confirmed_at,
-    recovery_sent_at,
-    last_sign_in_at,
-    raw_app_meta_data,
-    raw_user_meta_data,
-    created_at,
-    updated_at,
-    confirmation_token,
-    email_change,
-    email_change_token_new,
-    recovery_token
+    id, instance_id, aud, role, email, encrypted_password,
+    email_confirmed_at, recovery_sent_at, last_sign_in_at,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, email_change, email_change_token_new, recovery_token
   ) values (
-    p_id,
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    p_email,
-    crypt('test-password', gen_salt('bf')),
-    now(),
-    now(),
-    now(),
-    '{"provider":"email","providers":["email"]}'::jsonb,
-    '{}'::jsonb,
-    now(),
-    now(),
-    '',
-    '',
-    '',
-    ''
+    p_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+    p_email, crypt('test-password', gen_salt('bf')),
+    now(), now(), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    now(), now(), '', '', '', ''
   )
   on conflict (id) do nothing;
 exception
   when undefined_function then
-    -- gen_salt/crypt in extensions schema
     insert into auth.users (
       id, instance_id, aud, role, email, encrypted_password,
       email_confirmed_at, created_at, updated_at,

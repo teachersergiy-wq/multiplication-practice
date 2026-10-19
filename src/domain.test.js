@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels } from "./domain.ts";
+import { apiErrorMessage, parseApiResult } from "./lib/function-api.ts";
+import { validateAuthoredQuestion } from "./question-validation.ts";
 
 test("migrates legacy subject ids while retaining draft data", () => {
   const oldDrafts = [
@@ -55,9 +57,6 @@ test("keeps every database question type distinguishable in the UI", () => {
   assert.equal(new Set(Object.values(questionTypeLabels)).size, Object.keys(questionTypeLabels).length);
 });
 
-
-import { apiErrorMessage, parseApiResult } from "./lib/function-api.ts";
-
 test("parses API envelopes and maps access errors to Ukrainian UI copy", () => {
   assert.deepEqual(parseApiResult({ ok: true, data: { created: true } }), { ok: true, data: { created: true } });
   assert.deepEqual(parseApiResult({ ok: false, error: { code: "forbidden", message: "Forbidden" } }), {
@@ -66,4 +65,26 @@ test("parses API envelopes and maps access errors to Ukrainian UI copy", () => {
   });
   assert.equal(parseApiResult({ ok: false, error: { code: "unknown", message: "Nope" } }), null);
   assert.match(apiErrorMessage("forbidden"), /не має доступу/);
+});
+
+test("question validation accepts the seven contract question shapes", () => {
+  const base = { promptText: "Запитання?", points: 1 };
+  const questions = [
+    { ...base, type: "true_false", correct: true },
+    { ...base, type: "single_choice", options: ["А", "Б", "В", "Г"], correctIndex: 1 },
+    { ...base, type: "multiple_choice", options: ["А", "Б", "В"], correctIndexes: [0] },
+    { ...base, type: "ordering", itemsInCorrectOrder: ["А", "Б", "В"] },
+    { ...base, type: "matching", pairs: [{ left: "А", right: "Б" }, { left: "В", right: "Г" }] },
+    { ...base, type: "numeric", value: 42, tolerance: 0 },
+    { ...base, type: "short_answer", accepted: ["відповідь"], caseSensitive: false },
+  ];
+  for (const question of questions) assert.deepEqual(validateAuthoredQuestion(question), [], question.type);
+});
+
+test("question validation enforces contract option and answer limits", () => {
+  assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "single_choice", options: ["A", "B", "C"], correctIndex: 0 }).join(" "), /4–5/);
+  assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "multiple_choice", options: ["A", "B", "C"], correctIndexes: [] }).join(" "), /щонайменше один/);
+  assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "matching", pairs: [{ left: "A", right: "B" }] }).join(" "), /2–8/);
+  assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "short_answer", accepted: [] }).join(" "), /1–10/);
+  assert.ok(validateAuthoredQuestion({ promptText: "x", points: 0, type: "numeric", value: 1 }).length > 0);
 });

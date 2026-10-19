@@ -1,5 +1,9 @@
 # Local / CI Supabase configuration for multiplication-practice.
 # Does not target production project bvetbqbxjrvrmdhszmcw.
+#
+# MERGE NOTE: after merging G3 then G4, keep ALL [functions.*] blocks from both.
+# G3 adds: get-assessment-draft, upsert-question, delete-question, reorder-questions
+# G4 adds: publish-assessment, clone-assessment
 
 project_id = "multiplication-practice"
 
@@ -46,7 +50,6 @@ enable_confirmations = false
 [auth.sms]
 enable_signup = false
 
-# --- G1/G2 ---
 [functions.provision-teacher]
 verify_jwt = true
 
@@ -59,20 +62,6 @@ verify_jwt = true
 [functions.delete-student]
 verify_jwt = true
 
-# --- G3 ---
-[functions.get-assessment-draft]
-verify_jwt = true
-
-[functions.upsert-question]
-verify_jwt = true
-
-[functions.delete-question]
-verify_jwt = true
-
-[functions.reorder-questions]
-verify_jwt = true
-
-# --- G4 ---
 [functions.publish-assessment]
 verify_jwt = true
 

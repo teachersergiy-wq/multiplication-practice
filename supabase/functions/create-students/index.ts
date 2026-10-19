@@ -1,6 +1,7 @@
 /**
  * create-students — teacher only; own class; credentials per API_CONTRACT.
  * Full compensation on any failure; no partial success; no direct-table fallback.
+ * Auth policy errors are not retried as login collisions (G2b).
  */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
@@ -20,6 +21,31 @@ interface Body {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Auth/GoTrue errors that are not unique-login collisions — fail fast. */
+function isAuthPolicyError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("password") ||
+    m.includes("weak") ||
+    m.includes("at least") ||
+    m.includes("email address") ||
+    m.includes("invalid email") ||
+    m.includes("signup is disabled") ||
+    m.includes("signups not allowed") ||
+    m.includes("disabled")
+  );
+}
+
+function isUniqueCollision(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("already") ||
+    m.includes("duplicate") ||
+    m.includes("unique") ||
+    m.includes("exists")
+  );
+}
 
 Deno.serve(async (req) => {
   const opt = handleOptions(req);
@@ -122,13 +148,12 @@ Deno.serve(async (req) => {
 
     for (const fullName of names) {
       let login = "";
-      let email = "";
       let password = "";
       let authId = "";
 
       for (let attempt = 0; attempt < 12; attempt++) {
         login = generateLogin();
-        email = studentEmail(login, domain);
+        const email = studentEmail(login, domain);
         password = generatePassword();
 
         const { data: existingLogin } = await admin
@@ -144,7 +169,23 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: { role: "student", login },
         });
-        if (authErr || !authData.user) continue;
+
+        if (authErr) {
+          const msg = authErr.message ?? "";
+          if (isAuthPolicyError(msg)) {
+            await compensate();
+            console.error("auth policy rejected createUser");
+            return jsonErr(req, "internal", "Auth rejected student credentials");
+          }
+          if (isUniqueCollision(msg)) {
+            continue;
+          }
+          await compensate();
+          console.error("auth createUser failed");
+          return jsonErr(req, "internal", "Failed to create student auth user");
+        }
+
+        if (!authData.user) continue;
         authId = authData.user.id;
         createdAuthIds.push(authId);
         break;

@@ -97,7 +97,7 @@ export function StudentManagement() {
     <section className="class-management" id="classes">
       <div className="class-heading">
         <div><div className="eyebrow muted">КАБІНЕТ УЧИТЕЛЯ</div><h2>Мої класи й учні</h2></div>
-        {classes.length > 0 && <label className="field-label">КЛАС<select value={classId} onChange={(event) => { setClassId(event.target.value); setCredentials(null); }}>
+        {classes.length > 0 && <label className="field-label">КЛАС<select value={classId} onChange={(event) => { setClassId(event.target.value); setStudents([]); setCredentials(null); }}>
           {classes.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
         </select></label>}
       </div>

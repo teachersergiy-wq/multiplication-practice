@@ -127,35 +127,3 @@ export function StudentManagement() {
     </section>
   );
 }
-
-
-> multiplication-practice@0.1.0 build
-> tsc -b && vite build
-
-vite v7.3.7 building client environment for production...
-transforming...
-✓ 103 modules transformed.
-rendering chunks...
-computing gzip size...
-dist/index.html                   0.66 kB │ gzip:  0.43 kB
-dist/assets/index-BNROS3I5.css   14.01 kB │ gzip:  3.83 kB
-dist/assets/index-BjOnix0K.js   198.17 kB │ gzip: 62.86 kB
-✓ built in 1.49s
-
-> multiplication-practice@0.1.0 test
-> node --test src/domain.test.js
-
-✔ migrates legacy subject ids while retaining draft data (2.1291ms)
-✔ returns null for an invalid stored draft collection (0.1912ms)
-✔ migrates the legacy choice type only for v1 drafts (0.2018ms)
-✔ drops malformed items without throwing and detects incomplete legacy collections (0.266ms)
-✔ keeps every database question type distinguishable in the UI (0.2856ms)
-✔ parses API envelopes and maps access errors to Ukrainian UI copy (0.4039ms)
-ℹ tests 6
-ℹ suites 0
-ℹ pass 6
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 180.308

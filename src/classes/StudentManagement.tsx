@@ -59,6 +59,7 @@ export function StudentManagement() {
     const fullNames = names.split(/\r?\n/).map((name) => name.trim()).filter(Boolean);
     if (!fullNames.length) return;
     if (fullNames.length > 40) { setMessage("За один раз можна додати не більше 40 учнів."); return; }
+    if (fullNames.some((name) => name.length > 160)) { setMessage("Ім’я кожного учня має містити не більше 160 символів."); return; }
     setBusy(true); setMessage(""); setCredentials(null);
     const result = await invokeFunction(client, "create-students", {
       classId, students: fullNames.map((fullName) => ({ fullName })),
@@ -80,7 +81,11 @@ export function StudentManagement() {
 
   async function deleteStudent(studentId: string) {
     if (!client) return;
+    const studentName = students.find((item) => item.student_id === studentId)?.profiles?.full_name ?? "цього учня";
+    if (!window.confirm(`Видалити ${studentName}? Цю дію не можна скасувати.`)) return;
+    setBusy(true); setMessage("");
     const result = await invokeFunction(client, "delete-student", { studentId });
+    setBusy(false);
     if (!result.ok) { setMessage(apiErrorMessage(result.error.code)); return; }
     setStudents((current) => current.filter((item) => item.student_id !== studentId));
     setMessage("Учня видалено.");
@@ -114,7 +119,7 @@ export function StudentManagement() {
             <span className="student-avatar">{item.profiles?.full_name.slice(0, 1) ?? "У"}</span>
             <strong>{item.profiles?.full_name ?? "Учень"}</strong><code>{item.profiles?.student_login_code}</code>
             <button type="button" disabled={busy} onClick={() => void resetPassword(item.student_id)}>Новий пароль</button>
-            <button type="button" className="student-delete" onClick={() => void deleteStudent(item.student_id)}>Видалити</button>
+            <button type="button" className="student-delete" disabled={busy} onClick={() => void deleteStudent(item.student_id)}>Видалити</button>
           </article>)}
           {!students.length && <p className="class-empty">У цьому класі поки немає учнів.</p>}
         </div>
@@ -123,3 +128,34 @@ export function StudentManagement() {
   );
 }
 
+
+> multiplication-practice@0.1.0 build
+> tsc -b && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 103 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.66 kB │ gzip:  0.43 kB
+dist/assets/index-BNROS3I5.css   14.01 kB │ gzip:  3.83 kB
+dist/assets/index-BjOnix0K.js   198.17 kB │ gzip: 62.86 kB
+✓ built in 1.49s
+
+> multiplication-practice@0.1.0 test
+> node --test src/domain.test.js
+
+✔ migrates legacy subject ids while retaining draft data (2.1291ms)
+✔ returns null for an invalid stored draft collection (0.1912ms)
+✔ migrates the legacy choice type only for v1 drafts (0.2018ms)
+✔ drops malformed items without throwing and detects incomplete legacy collections (0.266ms)
+✔ keeps every database question type distinguishable in the UI (0.2856ms)
+✔ parses API envelopes and maps access errors to Ukrainian UI copy (0.4039ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 180.308

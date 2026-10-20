@@ -29,7 +29,7 @@ jobs:
       - run: npm ci
       - name: Type-check and build
         run: npm run build
-      - name: Unit tests (skipped while the project has no test script)
+      - name: Unit tests (runs when package.json has a test script)
         run: npm run test --if-present
       - name: Type-check the API contract (skipped until contracts/ exists)
         run: |
@@ -104,3 +104,13 @@ jobs:
             echo "== $f"
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
+      - name: Edge Auth probe and negative function tests (informational until proven)
+        if: steps.detect.outputs.run == 'true'
+        # First runs of these scripts: a failure is shown as a warning, not a red build.
+        # Make this blocking once it has passed on main a few times.
+        continue-on-error: true
+        run: |
+          curl -fsSL https://deno.land/install.sh | sh
+          echo "$HOME/.deno/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.deno/bin:$PATH"
+          bash supabase/tests/run_edge_g2b.sh

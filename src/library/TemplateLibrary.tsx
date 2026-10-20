@@ -76,15 +76,15 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
     if (!subject) { setError("Обраний предмет недоступний. Оновіть список предметів."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
-      const { error: createError } = await client.from("assessment_templates").insert({
+      const { data: created, error: createError } = await client.from("assessment_templates").insert({
         teacher_id: teacherId,
         subject_id: subject.id,
         grade_level: grade,
         title: newTitle.trim() || `${subject.name} · ${grade} клас`,
         mode: "practice",
         status: "draft",
-      });
-      if (createError) throw createError;
+      }).select("id").single();
+      if (createError || !created) throw createError ?? new Error("Template insert returned no row");
       setNewTitle("");
       setNotice("Чернетку створено.");
       await reload();
@@ -98,8 +98,8 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
     if (!value || value.length > 180) { setError("Назва має містити від 1 до 180 символів."); return; }
     setBusy(true); setError("");
     try {
-      const { error: updateError } = await client.from("assessment_templates").update({ title: value }).eq("id", id).eq("teacher_id", teacherId).eq("status", "draft");
-      if (updateError) throw updateError;
+      const { data: updated, error: updateError } = await client.from("assessment_templates").update({ title: value }).eq("id", id).eq("teacher_id", teacherId).eq("status", "draft").select("id").maybeSingle();
+      if (updateError || !updated) throw updateError ?? new Error("Template update returned no row");
       setRenamingId(null);
       await reload();
     } catch { setError("Не вдалося перейменувати чернетку."); }
@@ -110,8 +110,8 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
     if (!window.confirm(`Видалити чернетку «${item.title}»?`)) return;
     setBusy(true); setError("");
     try {
-      const { error: deleteError } = await client.from("assessment_templates").delete().eq("id", item.id).eq("teacher_id", teacherId).eq("status", "draft");
-      if (deleteError) throw deleteError;
+      const { data: deleted, error: deleteError } = await client.from("assessment_templates").delete().eq("id", item.id).eq("teacher_id", teacherId).eq("status", "draft").select("id").maybeSingle();
+      if (deleteError || !deleted) throw deleteError ?? new Error("Template delete returned no row");
       setTemplates((current) => current.filter((row) => row.id !== item.id));
     } catch { setError("Не вдалося видалити чернетку."); }
     finally { setBusy(false); }
@@ -143,7 +143,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
     let imported = 0;
     try {
       for (const draft of importable) {
-        const { error: importError } = await client.from("assessment_templates").insert({
+        const { data: created, error: importError } = await client.from("assessment_templates").insert({
           teacher_id: teacherId,
           subject_id: subjectIds.get(draft.subjectId),
           grade_level: draft.grade,
@@ -151,8 +151,8 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
           mode: "practice",
           status: "draft",
           settings: { importedFromLocalDraft: true },
-        });
-        if (importError) throw importError;
+        }).select("id").single();
+        if (importError || !created) throw importError ?? new Error("Imported template returned no row");
         imported++;
         importedIds.add(draft.id);
         try { localStorage.setItem(importedKey, JSON.stringify([...importedIds])); } catch { /* Remote copy remains successful; original is preserved. */ }

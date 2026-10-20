@@ -65,6 +65,11 @@ Deno.serve(async (req) => {
       console.error("api_submit_answer failed");
       return jsonErr(req, "internal", "Submit failed");
     }
+    // G6b: expired attempt is finalized as abandoned in SQL and returned as data;
+    // map to attempt_expired so the client sees the contract error code.
+    if (data && typeof data === "object" && (data as { expired?: boolean }).expired === true) {
+      return jsonErr(req, "attempt_expired", "Attempt expired");
+    }
     return jsonOk(req, data);
   } catch {
     console.error("submit-answer unexpected");

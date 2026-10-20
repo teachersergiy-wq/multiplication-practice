@@ -75,3 +75,12 @@ verify_jwt = true
 
 [functions.clone-assessment]
 verify_jwt = true
+
+[functions.start-attempt]
+verify_jwt = true
+
+[functions.submit-answer]
+verify_jwt = true
+
+[functions.finish-attempt]
+verify_jwt = true

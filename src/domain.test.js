@@ -83,6 +83,7 @@ test("question validation accepts the seven contract question shapes", () => {
 
 test("question validation enforces contract option and answer limits", () => {
   assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "single_choice", options: ["A", "B", "C"], correctIndex: 0 }).join(" "), /4–5/);
+  assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "single_choice", options: ["A", "B", "C", "D"], correctIndex: null }).join(" "), /Позначте один/);
   assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "multiple_choice", options: ["A", "B", "C"], correctIndexes: [] }).join(" "), /щонайменше один/);
   assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "matching", pairs: [{ left: "A", right: "B" }] }).join(" "), /2–8/);
   assert.match(validateAuthoredQuestion({ promptText: "x", points: 1, type: "short_answer", accepted: [] }).join(" "), /1–10/);

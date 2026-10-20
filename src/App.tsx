@@ -3,6 +3,7 @@ import type { AssessmentDraft, QuestionType } from "./domain";
 import { assessmentDraftStorageKey, grades, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
 import { TeacherAccessGate, useTeacherIdentity } from "./auth/TeacherAccessGate";
 import { StudentManagement } from "./classes/StudentManagement";
+import { QuestionEditor } from "./questions/QuestionEditor";
 import { supabase } from "./lib/supabase";
 
 function readDrafts(userStorageKey: string): AssessmentDraft[] {
@@ -82,7 +83,7 @@ function Dashboard() {
         </a>
         <nav className="topnav" aria-label="Головна навігація">
           <a className="active" href="#library">Моя бібліотека</a>
-          <a href="#builder">Конструктор</a>
+          <a href="#question-editor">Конструктор</a>
           <a href="#classes">Мої класи</a>
         </nav>
         {teacher ? (
@@ -154,6 +155,8 @@ function Dashboard() {
           <div className="builder-footnote"><span>⌘</span> Чернетки поки зберігаються у цьому браузері</div>
         </aside>
       </section>
+
+      <QuestionEditor />
 
       {teacher && <StudentManagement />}
 

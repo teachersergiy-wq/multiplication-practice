@@ -3,6 +3,7 @@ import type { AssessmentDraft, QuestionType } from "./domain";
 import { assessmentDraftStorageKey, grades, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
 import { TeacherAccessGate, useTeacherIdentity } from "./auth/TeacherAccessGate";
 import { StudentManagement } from "./classes/StudentManagement";
+import { QuestionEditor } from "./questions/QuestionEditor";
 import { supabase } from "./lib/supabase";
 
 function readDrafts(userStorageKey: string): AssessmentDraft[] {
@@ -156,6 +157,7 @@ function Dashboard() {
       </section>
 
       {teacher && <StudentManagement />}
+      <QuestionEditor />
 
       <footer className="footer" id="classes"><span>Маленькі кроки — великі відкриття.</span><span>Навчальна студія <b>✳</b> 2026</span></footer>
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрити">×</button></div>}

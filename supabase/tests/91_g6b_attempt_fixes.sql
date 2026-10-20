@@ -27,30 +27,28 @@ begin
   perform tests.ensure_auth_user(tid, 'g6b-teacher@test.local');
   perform tests.ensure_auth_user(sid, 'g6b-student@test.local');
 
-  insert into public.profiles (id, role, full_name, generated_nickname)
+  insert into public.profiles (id, role, full_name, generated_nickname, student_login_code)
   values
-    (tid, 'teacher', 'G6b Teacher', 'G6BT'),
-    (sid, 'student', 'G6b Student', 'G6BS')
+    (tid, 'teacher', 'G6b Teacher', 'G6BT', null),
+    (sid, 'student', 'G6b Student', 'G6BS', 'abcd')
   on conflict (id) do nothing;
 
   select id into subj from public.subjects where code = 'mathematics' limit 1;
 
-  insert into public.schools (id, name, created_by)
-  values ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0010', 'G6b School', tid)
-  on conflict (id) do nothing
-  returning id into school;
-  if school is null then school := 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0010'; end if;
+  insert into public.schools (id, name)
+  values ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0010', 'G6b School')
+  on conflict (id) do nothing;
+  school := 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0010';
 
-  insert into public.classes (id, school_id, name, grade_level, created_by)
-  values ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0011', school, 'G6b Class', 3, tid)
-  on conflict (id) do nothing
-  returning id into class;
-  if class is null then class := 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0011'; end if;
+  insert into public.classes (id, school_id, name)
+  values ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0011', school, 'G6b Class')
+  on conflict (id) do nothing;
+  class := 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0011';
 
   insert into public.class_teachers (class_id, teacher_id)
   values (class, tid) on conflict do nothing;
-  insert into public.class_students (class_id, student_id)
-  values (class, sid) on conflict do nothing;
+  insert into public.class_students (student_id, class_id)
+  values (sid, class) on conflict (student_id) do nothing;
 
   -- --- Integer settings at publish ---
   insert into public.assessment_templates (
@@ -95,11 +93,11 @@ begin
   perform public.api_publish_assessment(tpl, tid);
 
   insert into public.assessment_assignments (
-    id, template_id, class_id, opens_at, closes_at, allow_retries
+    id, template_id, class_id, assigned_by, opens_at, closes_at, allow_retries
   ) values (
-    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0030', tpl, class, now() - interval '1 hour',
-    now() + interval '1 day', false
-  ) on conflict (id) do update set allow_retries = false;
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0030', tpl, class, tid,
+    now() - interval '1 hour', now() + interval '1 day', false
+  ) on conflict (id) do update set allow_retries = false, assigned_by = excluded.assigned_by;
   asg := 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0030';
 
   -- Start attempt
@@ -126,7 +124,7 @@ begin
   perform tests.ok(coalesce((res->>'expired')::boolean, false) = true, 'submit after deadline expired');
   perform tests.ok(coalesce((res->>'accepted')::boolean, true) = false, 'submit after deadline not accepted');
 
-  select status into st from public.assessment_attempts where id = att;
+  select status::text into st from public.assessment_attempts where id = att;
   perform tests.ok(st = 'abandoned', 'expired attempt is abandoned');
 
   -- retry_not_allowed after abandoned when allow_retries=false
@@ -137,25 +135,12 @@ begin
     perform tests.ok(SQLERRM ilike '%retry_not_allowed%', 'retry_not_allowed after abandoned');
   end;
 
-  -- Response size limit
-  -- New assignment with retries for fresh attempt
+  -- Fresh attempt with retries allowed
   update public.assessment_assignments set allow_retries = true where id = asg;
   res := public.api_start_attempt(asg, sid);
   att := (res->>'attemptId')::uuid;
 
-  begin
-    perform public.api_submit_answer(
-      att, sid, qid,
-      jsonb_build_object('type', 'true_false', 'value', true, 'pad', repeat('x', 10))
-    );
-    -- true_false only checks value type; extra keys are ok for this check
-    null;
-  exception when others then
-    null; -- ignore
-  end;
-
-  -- short_answer length limit (need a short_answer question)
-  -- use invalid type shape: wrong type
+  -- Type mismatch rejected
   begin
     perform public.api_submit_answer(
       att, sid, qid,

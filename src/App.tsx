@@ -141,7 +141,7 @@ function Dashboard() {
             const subject = subjects.find((item) => item.code === draft.subjectId)!;
             return <article className="draft-row" key={draft.id}><span className={`draft-icon ${subject.tone}`}>{subject.icon}</span><div className="draft-info"><strong>{draft.title}</strong><small>{subject.name} <i>·</i> {draft.grade} клас <i>·</i> {draft.questionCount} запитань</small></div><span className="draft-status">{draft.updatedAt}</span><button className="row-menu" aria-label={`Дії: ${draft.title}`}>···</button></article>;
           })}</div> : <div className="empty-state"><span>✎</span><strong>Тут з’являться ваші тести</strong><p>Створіть першу заготовку для обраного предмета й класу.</p></div>}
-          </>
+          </>}
         </div>
 
         {!teacher && <aside className="builder-card">

@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+
+# Publishes the built web app (static files only) to GitHub Pages after a change lands on main.
+# The two VITE_ values below are PUBLIC by design (project URL and publishable key; access is
+# enforced by RLS and Edge Functions). No secret is used here. Never put a service-role key,
+# a database password or a personal access token in this file.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: https://iwydxledvafcgrtylpis.supabase.co
+      VITE_SUPABASE_ANON_KEY: sb_publishable_--4udOfCyK30e3Ih2YzeYA_CmwDKppG
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Subject } from "../domain";
+import type { AssessmentDraft, Subject } from "../domain";
 import { assessmentDraftStorageKey, migrateAssessmentDrafts } from "../domain";
 import type { supabase } from "../lib/supabase";
 
@@ -118,10 +118,23 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
   }
 
   async function importLocalDrafts() {
-    let parsed: unknown;
-    try { parsed = JSON.parse(localStorage.getItem(assessmentDraftStorageKey(teacherId)) ?? "null"); }
-    catch { setError("Локальні чернетки пошкоджені й не можуть бути прочитані."); return; }
-    const drafts = migrateAssessmentDrafts(parsed);
+    const importedKey = `learning-studio-imported-draft-ids:${teacherId}`;
+    let importedIds = new Set<string>();
+    try {
+      const savedIds: unknown = JSON.parse(localStorage.getItem(importedKey) ?? "[]");
+      if (Array.isArray(savedIds)) importedIds = new Set(savedIds.filter((id): id is string => typeof id === "string"));
+    } catch { /* A broken marker must not block the user's import. */ }
+    const sourceKeys = [assessmentDraftStorageKey(teacherId), "learning-studio-assessment-drafts-v2", "learning-studio-assessment-drafts-v1"];
+    const byId = new Map<string, AssessmentDraft>();
+    try {
+      for (const key of sourceKeys) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const migrated = migrateAssessmentDrafts(JSON.parse(raw), { legacyQuestionTypes: key.endsWith("-v1") });
+        for (const draft of migrated ?? []) if (!byId.has(draft.id)) byId.set(draft.id, draft);
+      }
+    } catch { setError("Одна з локальних чернеток пошкоджена. Виправте її або видаліть вручну й повторіть імпорт."); return; }
+    const drafts = [...byId.values()].filter((draft) => !importedIds.has(draft.id));
     if (!drafts?.length) { setNotice("Локальних чернеток для цього облікового запису не знайдено."); return; }
     const subjectIds = new Map(subjectRows.map((subject) => [subject.code, subject.id]));
     const importable = drafts.filter((draft) => subjectIds.has(draft.subjectId) && draft.grade >= 1 && draft.grade <= 12);
@@ -141,6 +154,8 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
         });
         if (importError) throw importError;
         imported++;
+        importedIds.add(draft.id);
+        try { localStorage.setItem(importedKey, JSON.stringify([...importedIds])); } catch { /* Remote copy remains successful; original is preserved. */ }
       }
       setNotice(`Імпортовано чернеток: ${imported}. Локальні копії залишилися у браузері.`);
       await reload();

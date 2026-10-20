@@ -4,6 +4,7 @@ import { assessmentDraftStorageKey, grades, migrateAssessmentDrafts, questionTyp
 import { TeacherAccessGate, useTeacherIdentity } from "./auth/TeacherAccessGate";
 import { StudentManagement } from "./classes/StudentManagement";
 import { QuestionEditor } from "./questions/QuestionEditor";
+import { TemplateLibrary } from "./library/TemplateLibrary";
 import { supabase } from "./lib/supabase";
 
 function readDrafts(userStorageKey: string): AssessmentDraft[] {
@@ -40,6 +41,7 @@ function Dashboard() {
   const [questionType, setQuestionType] = useState<QuestionType>("numeric");
   const [title, setTitle] = useState("");
   const [notice, setNotice] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; title: string } | null>(null);
 
   const visibleDrafts = useMemo(
     () => drafts.filter((draft) => draft.subjectId === subjectCode && draft.grade === grade),
@@ -130,6 +132,7 @@ function Dashboard() {
 
       <section className="section workspace" id="builder">
         <div className="workspace-main">
+          {teacher && supabase ? <TemplateLibrary client={supabase} teacherId={teacher.userId} subjects={subjects} subjectCode={subjectCode} grade={grade} onGradeChange={setGrade} onOpen={(draft) => { setSelectedTemplate(draft); window.setTimeout(() => document.getElementById("question-editor")?.scrollIntoView({ behavior: "smooth" }), 0); }} /> : <>
           <div className="section-heading workspace-heading">
             <div><div className="eyebrow muted">ВАША БІБЛІОТЕКА</div><h2>Тести та заготовки</h2></div>
             <label className="grade-select">КЛАС <select value={grade} onChange={(event) => setGrade(Number(event.target.value))}>{grades.map((item) => <option key={item} value={item}>{item} клас</option>)}</select></label>
@@ -138,9 +141,10 @@ function Dashboard() {
             const subject = subjects.find((item) => item.code === draft.subjectId)!;
             return <article className="draft-row" key={draft.id}><span className={`draft-icon ${subject.tone}`}>{subject.icon}</span><div className="draft-info"><strong>{draft.title}</strong><small>{subject.name} <i>·</i> {draft.grade} клас <i>·</i> {draft.questionCount} запитань</small></div><span className="draft-status">{draft.updatedAt}</span><button className="row-menu" aria-label={`Дії: ${draft.title}`}>···</button></article>;
           })}</div> : <div className="empty-state"><span>✎</span><strong>Тут з’являться ваші тести</strong><p>Створіть першу заготовку для обраного предмета й класу.</p></div>}
+          </>}
         </div>
 
-        <aside className="builder-card">
+        {!teacher && <aside className="builder-card">
           <div className="builder-topline"><span className="builder-icon">✧</span><span className="eyebrow muted">ШВИДКИЙ СТАРТ</span></div>
           <h3>Нова заготовка</h3><p>Задайте основу тесту. Запитання можна буде додати й налаштувати пізніше.</p>
           <form onSubmit={saveDraft}>
@@ -153,11 +157,11 @@ function Dashboard() {
             <button className="primary-button form-submit" type="submit">Створити заготовку <span>→</span></button>
           </form>
           <div className="builder-footnote"><span>⌘</span> Чернетки поки зберігаються у цьому браузері</div>
-        </aside>
+        </aside>}
       </section>
 
       {teacher && <StudentManagement />}
-      <QuestionEditor />
+      <QuestionEditor selectedDraft={selectedTemplate} />
 
       <footer className="footer" id="classes"><span>Маленькі кроки — великі відкриття.</span><span>Навчальна студія <b>✳</b> 2026</span></footer>
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрити">×</button></div>}

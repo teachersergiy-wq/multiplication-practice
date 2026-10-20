@@ -89,9 +89,9 @@ export function QuestionEditor() {
       <span className="question-preview-type">{questionTypeLabels[question.type]} · {question.points} б.</span>
       <strong>{question.promptText}</strong>
       {question.type === "true_false" && <p>Так &nbsp; / &nbsp; Ні</p>}
-      {(question.type === "single_choice" || question.type === "multiple_choice") && <ol>{question.options.map((option) => <li key={option}>{option}</li>)}</ol>}
-      {question.type === "ordering" && <ol>{[...question.itemsInCorrectOrder].reverse().map((item) => <li key={item}>{item}</li>)}</ol>}
-      {question.type === "matching" && <div className="preview-match-columns"><ul>{question.pairs.map((pair) => <li key={`left-${pair.left}`}>{pair.left}</li>)}</ul><ul>{[...question.pairs].reverse().map((pair) => <li key={`right-${pair.right}`}>{pair.right}</li>)}</ul></div>}
+      {(question.type === "single_choice" || question.type === "multiple_choice") && <ol>{question.options.map((option, index) => <li key={`${previewId}-choice-${index}`}>{option}</li>)}</ol>}
+      {question.type === "ordering" && <ol>{[...question.itemsInCorrectOrder].reverse().map((item, index) => <li key={`${previewId}-order-${index}`}>{item}</li>)}</ol>}
+      {question.type === "matching" && <div className="preview-match-columns"><ul>{question.pairs.map((pair, index) => <li key={`${previewId}-left-${index}`}>{pair.left}</li>)}</ul><ul>{[...question.pairs].reverse().map((pair, index) => <li key={`${previewId}-right-${index}`}>{pair.right}</li>)}</ul></div>}
       {(question.type === "numeric" || question.type === "short_answer") && <p className="preview-response">Поле для відповіді учня</p>}
     </article>;
   }
@@ -138,7 +138,7 @@ export function QuestionEditor() {
           {notice && <p className="question-notice" role="status">{notice}</p>}
           <button className="primary-button" type="submit">Додати запитання до чернетки</button>
         </form>
-        <aside className="question-preview-panel"><h3>Попередній перегляд</h3><p className="question-preview-help">Правильні відповіді тут не позначаються.</p>{preview(makeQuestion() as AuthoredQuestion, "current-preview")}<h3>Питання в цій сесії ({questions.length})</h3>{questions.map((question, index) => preview(question, `saved-preview-${index}`))}</aside>
+        <aside className="question-preview-panel"><h3>Орієнтовний перегляд</h3><p className="question-preview-help">Правильні відповіді не позначаються; під час тесту порядок елементів може змінитися.</p>{preview(makeQuestion() as AuthoredQuestion, "current-preview")}<h3>Питання в цій сесії ({questions.length})</h3>{questions.map((question, index) => preview(question, `saved-preview-${index}`))}</aside>
       </div>
     </section>
   );

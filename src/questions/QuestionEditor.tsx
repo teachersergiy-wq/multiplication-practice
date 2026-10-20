@@ -18,7 +18,7 @@ const moveItem = <T,>(items: T[], index: number, direction: -1 | 1): T[] => {
   return next;
 };
 
-export function QuestionEditor() {
+export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string; title: string } | null }) {
   const [type, setType] = useState<QuestionType>("numeric");
   const [promptText, setPromptText] = useState("");
   const [points, setPoints] = useState("1");
@@ -99,7 +99,7 @@ export function QuestionEditor() {
   const bounds = type === "single_choice" ? LIMITS.singleChoiceOptions : type === "multiple_choice" ? LIMITS.multipleChoiceOptions : LIMITS.orderingItems;
   return (
     <section className="question-editor" id="question-editor">
-      <div className="section-heading"><div><div className="eyebrow muted">КОНСТРУКТОР</div><h2>Редактор запитань</h2></div><span className="section-aside">Зараз — локальна чернетка</span></div>
+      <div className="section-heading"><div><div className="eyebrow muted">КОНСТРУКТОР</div><h2>{selectedDraft ? `Редагування: ${selectedDraft.title}` : "Редактор запитань"}</h2></div><span className="section-aside">{selectedDraft ? "Питання поки зберігаються лише в цій сесії" : "Зараз — локальна чернетка"}</span></div>
       <div className="question-editor-grid">
         <form className="question-form" onSubmit={saveQuestion}>
           <label className="field-label">ТИП ЗАПИТАННЯ

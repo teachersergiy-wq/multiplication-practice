@@ -37,6 +37,10 @@ export interface AssessmentDraft {
   updatedAt: string;
 }
 
+export function assessmentDraftStorageKey(userId: string | null): string {
+  return `learning-studio-assessment-drafts-v2:${userId ?? "demo"}`;
+}
+
 const legacySubjectCodes: Record<string, string> = {
   math: "mathematics",
   ukrainian: "ukrainian-language",
@@ -108,4 +112,3 @@ export const starterDrafts: AssessmentDraft[] = [
   { id: "fractions-intro", title: "Знайомство з дробами", subjectId: "mathematics", grade: 5, questionType: "single_choice", questionCount: 8, durationMinutes: 10, updatedAt: "Приклад шаблону" },
   { id: "ukrainian-vowels", title: "Голосні та приголосні", subjectId: "ukrainian-language", grade: 2, questionType: "single_choice", questionCount: 10, durationMinutes: 8, updatedAt: "Приклад шаблону" },
 ];
-

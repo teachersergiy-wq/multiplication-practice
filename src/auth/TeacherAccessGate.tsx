@@ -4,6 +4,7 @@ import { apiErrorMessage, invokeFunction } from "../lib/function-api";
 import { supabase } from "../lib/supabase";
 
 interface TeacherIdentity {
+  userId: string;
   displayName: string;
   email: string;
   signOut: () => Promise<void>;
@@ -100,6 +101,7 @@ export function TeacherAccessGate({ children }: { children: ReactNode }) {
   const identity = useMemo<TeacherIdentity | null>(() => {
     if (phase !== "ready" || !user) return null;
     return {
+      userId: user.id,
       displayName: displayName || user.email || "Учитель",
       email: user.email ?? "",
       signOut: async () => {
@@ -203,4 +205,3 @@ function authErrorMessage(code?: string): string {
   if (code === "too_many_requests") return "Забагато спроб входу. Зачекайте трохи й повторіть.";
   return "Не вдалося увійти. Перевірте пошту й пароль.";
 }
-

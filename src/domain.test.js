@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels } from "./domain.ts";
+import { assessmentDraftStorageKey, isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels } from "./domain.ts";
+import { apiErrorMessage, parseApiResult } from "./lib/function-api.ts";
 
 test("migrates legacy subject ids while retaining draft data", () => {
   const oldDrafts = [
@@ -55,9 +56,6 @@ test("keeps every database question type distinguishable in the UI", () => {
   assert.equal(new Set(Object.values(questionTypeLabels)).size, Object.keys(questionTypeLabels).length);
 });
 
-
-import { apiErrorMessage, parseApiResult } from "./lib/function-api.ts";
-
 test("parses API envelopes and maps access errors to Ukrainian UI copy", () => {
   assert.deepEqual(parseApiResult({ ok: true, data: { created: true } }), { ok: true, data: { created: true } });
   assert.deepEqual(parseApiResult({ ok: false, error: { code: "forbidden", message: "Forbidden" } }), {
@@ -67,3 +65,9 @@ test("parses API envelopes and maps access errors to Ukrainian UI copy", () => {
   assert.equal(parseApiResult({ ok: false, error: { code: "unknown", message: "Nope" } }), null);
   assert.match(apiErrorMessage("forbidden"), /не має доступу/);
 });
+
+test("draft storage is isolated by teacher identity and demo mode", () => {
+  assert.notEqual(assessmentDraftStorageKey("teacher-a"), assessmentDraftStorageKey("teacher-b"));
+  assert.equal(assessmentDraftStorageKey(null), "learning-studio-assessment-drafts-v2:demo");
+});
+

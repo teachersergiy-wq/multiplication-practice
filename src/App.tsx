@@ -1,20 +1,18 @@
 import { useMemo, useState } from "react";
 import type { AssessmentDraft, QuestionType } from "./domain";
-import { grades, isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
+import { assessmentDraftStorageKey, grades, migrateAssessmentDrafts, questionTypeLabels, starterDrafts, subjects } from "./domain";
 import { TeacherAccessGate, useTeacherIdentity } from "./auth/TeacherAccessGate";
+import { StudentManagement } from "./classes/StudentManagement";
 import { supabase } from "./lib/supabase";
 
-const storageKey = "learning-studio-assessment-drafts-v2";
-const legacyStorageKey = "learning-studio-assessment-drafts-v1";
-
-function readDrafts(): AssessmentDraft[] {
+function readDrafts(userStorageKey: string): AssessmentDraft[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(storageKey) ?? "null");
+    const value: unknown = JSON.parse(localStorage.getItem(userStorageKey) ?? "null");
     const drafts = migrateAssessmentDrafts(value);
     if (drafts) {
       try {
         if (JSON.stringify(drafts) !== JSON.stringify(value)) {
-          localStorage.setItem(storageKey, JSON.stringify(drafts));
+          localStorage.setItem(userStorageKey, JSON.stringify(drafts));
         }
       } catch {
         // Keep the migrated drafts available in memory if storage is unavailable.
@@ -25,22 +23,6 @@ function readDrafts(): AssessmentDraft[] {
     // A corrupted local draft is safely ignored.
   }
 
-  try {
-    const legacyValue: unknown = JSON.parse(localStorage.getItem(legacyStorageKey) ?? "null");
-    const legacyDrafts = migrateAssessmentDrafts(legacyValue, { legacyQuestionTypes: true });
-    if (legacyDrafts) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(legacyDrafts));
-        if (isAssessmentDraftCollection(legacyValue)) localStorage.removeItem(legacyStorageKey);
-      } catch {
-        // Keep migrated drafts in memory if storage is unavailable.
-      }
-      return legacyDrafts;
-    }
-  } catch {
-    // A corrupted legacy draft is safely ignored.
-  }
-
   return starterDrafts;
 }
 
@@ -49,13 +31,14 @@ export function App() {
 }
 
 function Dashboard() {
-  const [drafts, setDrafts] = useState<AssessmentDraft[]>(readDrafts);
+  const teacher = useTeacherIdentity();
+  const userStorageKey = assessmentDraftStorageKey(teacher?.userId ?? null);
+  const [drafts, setDrafts] = useState<AssessmentDraft[]>(() => readDrafts(userStorageKey));
   const [subjectCode, setSubjectCode] = useState("mathematics");
   const [grade, setGrade] = useState(3);
   const [questionType, setQuestionType] = useState<QuestionType>("numeric");
   const [title, setTitle] = useState("");
   const [notice, setNotice] = useState("");
-  const teacher = useTeacherIdentity();
 
   const visibleDrafts = useMemo(
     () => drafts.filter((draft) => draft.subjectId === subjectCode && draft.grade === grade),
@@ -79,7 +62,7 @@ function Dashboard() {
     setDrafts(next);
     let saved = true;
     try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
+      localStorage.setItem(userStorageKey, JSON.stringify(next));
     } catch {
       saved = false;
     }
@@ -92,6 +75,7 @@ function Dashboard() {
 
   return (
     <main className="page-shell">
+      {!teacher && <div className="demo-banner" role="status"><strong>Демо-режим</strong><span>Зміни зберігаються лише в цьому браузері.</span></div>}
       <header className="topbar">
         <a className="brand" href="#home" aria-label="Навчальна студія — на головну">
           <span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span>
@@ -171,9 +155,10 @@ function Dashboard() {
         </aside>
       </section>
 
+      {teacher && <StudentManagement />}
+
       <footer className="footer" id="classes"><span>Маленькі кроки — великі відкриття.</span><span>Навчальна студія <b>✳</b> 2026</span></footer>
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрити">×</button></div>}
     </main>
   );
 }
-

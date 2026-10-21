@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test src/domain.test.js"
+    "test": "node --test src/domain.test.js src/questions/editor-api.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.58.0",
@@ -25,4 +25,3 @@
     "vite": "7.3.7"
   }
 }
-

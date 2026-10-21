@@ -1,8 +1,11 @@
-import { useRef, useState, type FormEvent } from "react";
-import type { AuthoredQuestion, QuestionType } from "../../contracts/api";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { AuthoredQuestion, AssessmentStatus, QuestionType, StoredAuthoredQuestion } from "../../contracts/api";
 import { LIMITS } from "../../contracts/api";
 import { questionTypeLabels } from "../domain";
 import { isAuthoredQuestion, validateAuthoredQuestion } from "../question-validation";
+import { supabase } from "../lib/supabase";
+import { apiErrorMessage, invokeFunction } from "../lib/function-api";
+import { deleteQuestionRequest, getDraftRequest, reorderQuestionsRequest, upsertQuestionRequest } from "./editor-api.js";
 
 const questionTypes: QuestionType[] = ["true_false", "single_choice", "multiple_choice", "ordering", "matching", "numeric", "short_answer"];
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -33,10 +36,40 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
   const [tolerance, setTolerance] = useState("");
   const [accepted, setAccepted] = useState<TextItem[]>(textItems(1));
   const [caseSensitive, setCaseSensitive] = useState(false);
-  const [questions, setQuestions] = useState<AuthoredQuestion[]>([]);
+  const [questions, setQuestions] = useState<StoredAuthoredQuestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draftStatus, setDraftStatus] = useState<AssessmentStatus>("draft");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const inputRefs = useRef(new Map<string, HTMLInputElement>());
+
+  useEffect(() => {
+    let active = true;
+    setQuestions([]);
+    setEditingId(null);
+    setNotice("");
+    setErrors([]);
+    if (!selectedDraft || !supabase) {
+      setDraftStatus("draft");
+      setLoading(false);
+      return () => { active = false; };
+    }
+    setLoading(true);
+    void invokeFunction(supabase, "get-assessment-draft", getDraftRequest(selectedDraft.id)).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        setErrors([apiErrorMessage(result.error.code)]);
+        setLoading(false);
+        return;
+      }
+      setQuestions(result.data.questions);
+      setDraftStatus(result.data.template.status);
+      setLoading(false);
+    });
+    return () => { active = false; };
+  }, [selectedDraft?.id]);
 
   function setInputRef(id: string, element: HTMLInputElement | null) {
     if (element) inputRefs.current.set(id, element);
@@ -60,6 +93,30 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
     if (next === "short_answer") setAccepted(textItems(1));
   }
 
+  function loadQuestion(question: StoredAuthoredQuestion) {
+    setEditingId(question.id);
+    setType(question.type);
+    setPromptText(question.promptText);
+    setPoints(String(question.points));
+    setTimeLimit(question.timeLimitSeconds == null ? "" : String(question.timeLimitSeconds));
+    if (question.type === "true_false") setCorrectBoolean(question.correct);
+    if (question.type === "single_choice") { setOptions(question.options.map((value) => ({ id: makeId(), value }))); setCorrectIndex(question.correctIndex); }
+    if (question.type === "multiple_choice") { setOptions(question.options.map((value) => ({ id: makeId(), value }))); setCorrectIndexes(question.correctIndexes); }
+    if (question.type === "ordering") setItems(question.itemsInCorrectOrder.map((value) => ({ id: makeId(), value })));
+    if (question.type === "matching") setPairs(question.pairs.map((pair) => ({ id: makeId(), ...pair })));
+    if (question.type === "numeric") { setNumericValue(String(question.value)); setTolerance(question.tolerance == null ? "" : String(question.tolerance)); }
+    if (question.type === "short_answer") { setAccepted(question.accepted.map((value) => ({ id: makeId(), value }))); setCaseSensitive(question.caseSensitive ?? false); }
+    setErrors([]); setNotice("Питання завантажено для редагування.");
+    document.getElementById("question-editor")?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function resetForm() {
+    setEditingId(null); setType("numeric"); setPromptText(""); setPoints("1"); setTimeLimit("");
+    setOptions(textItems(4)); setCorrectIndex(null); setCorrectIndexes([]); setItems(textItems(3));
+    setPairs(matchItems(2)); setCorrectBoolean(null); setNumericValue(""); setTolerance("");
+    setAccepted(textItems(1)); setCaseSensitive(false);
+  }
+
   function makeQuestion(): unknown {
     const common = { promptText, points: Number(points), ...(timeLimit ? { timeLimitSeconds: Number(timeLimit) } : {}) };
     switch (type) {
@@ -73,15 +130,58 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
     }
   }
 
-  function saveQuestion(event: FormEvent<HTMLFormElement>) {
+  async function saveQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const candidate = makeQuestion();
     const validationErrors = validateAuthoredQuestion(candidate);
     setErrors(validationErrors); setNotice("");
     if (!isAuthoredQuestion(candidate)) return;
-    setQuestions((current) => [...current, candidate]);
-    setNotice("Запитання додано до цієї сесії. Воно ще не надіслане на сервер.");
-    setPromptText("");
+    if (!selectedDraft || !supabase) {
+      setQuestions((current) => [...current, { ...candidate, id: makeId(), position: current.length }]);
+      setNotice("Запитання додано лише до цієї демо-сесії.");
+      setPromptText("");
+      return;
+    }
+    setSaving(true);
+    const result = await invokeFunction(supabase, "upsert-question", upsertQuestionRequest(selectedDraft.id, editingId, candidate));
+    if (!result.ok) {
+      setErrors([apiErrorMessage(result.error.code)]);
+      setSaving(false);
+      return;
+    }
+    const saved: StoredAuthoredQuestion = { ...candidate, id: result.data.questionId, position: editingId ? (questions.find((item) => item.id === editingId)?.position ?? questions.length) : questions.length };
+    setQuestions((current) => editingId
+      ? current.map((item) => item.id === editingId ? saved : item)
+      : [...current, saved]);
+    setNotice(editingId ? "Зміни збережено." : "Запитання збережено в чернетці.");
+    resetForm();
+    setSaving(false);
+  }
+
+  async function deleteQuestion(question: StoredAuthoredQuestion) {
+    if (!window.confirm(`Видалити запитання «${question.promptText}»?`)) return;
+    if (!selectedDraft || !supabase) { setQuestions((current) => current.filter((item) => item.id !== question.id)); return; }
+    setSaving(true);
+    const result = await invokeFunction(supabase, "delete-question", deleteQuestionRequest(question.id));
+    if (!result.ok) setErrors([apiErrorMessage(result.error.code)]);
+    else { setQuestions((current) => current.filter((item) => item.id !== question.id).map((item, position) => ({ ...item, position }))); setNotice("Запитання видалено."); }
+    setSaving(false);
+  }
+
+  async function moveQuestion(question: StoredAuthoredQuestion, direction: -1 | 1) {
+    const index = questions.findIndex((item) => item.id === question.id);
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    const reordered = [...questions];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    if (selectedDraft && supabase) {
+      setSaving(true);
+      const result = await invokeFunction(supabase, "reorder-questions", reorderQuestionsRequest(selectedDraft.id, reordered.map((item) => item.id)));
+      if (!result.ok) { setErrors([apiErrorMessage(result.error.code)]); setSaving(false); return; }
+    }
+    setQuestions(reordered.map((item, position) => ({ ...item, position })));
+    setNotice("Порядок запитань оновлено.");
+    setSaving(false);
   }
 
   function preview(question: AuthoredQuestion, previewId: string) {
@@ -99,11 +199,15 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
   const bounds = type === "single_choice" ? LIMITS.singleChoiceOptions : type === "multiple_choice" ? LIMITS.multipleChoiceOptions : LIMITS.orderingItems;
   return (
     <section className="question-editor" id="question-editor">
-      <div className="section-heading"><div><div className="eyebrow muted">КОНСТРУКТОР</div><h2>{selectedDraft ? `Редагування: ${selectedDraft.title}` : "Редактор запитань"}</h2></div><span className="section-aside">{selectedDraft ? "Питання поки зберігаються лише в цій сесії" : "Зараз — локальна чернетка"}</span></div>
+      <div className="section-heading"><div><div className="eyebrow muted">КОНСТРУКТОР</div><h2>{selectedDraft ? `Редагування: ${selectedDraft.title}` : "Редактор запитань"}</h2></div><span className="section-aside">{!supabase ? "Демо-режим · дані лише в цій сесії" : !selectedDraft ? "Оберіть тест у бібліотеці" : draftStatus === "draft" ? "Чернетка збережеться на сервері" : "Опублікований тест · лише перегляд"}</span></div>
+      {loading && <p className="question-notice" role="status">Завантажуємо питання чернетки…</p>}
+      {errors.length > 0 && <ul className="question-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul>}
+      {supabase && !selectedDraft && <p className="question-preview-help">Виберіть чернетку у бібліотеці, щоб переглянути або редагувати її питання.</p>}
       <div className="question-editor-grid">
-        <form className="question-form" onSubmit={saveQuestion}>
+        {(!supabase || (selectedDraft && draftStatus === "draft")) && <form className="question-form" onSubmit={saveQuestion}>
+          {saving && <p className="question-notice" role="status">Зберігаємо…</p>}
           <label className="field-label">ТИП ЗАПИТАННЯ
-            <select value={type} onChange={(event) => changeType(event.target.value as QuestionType)}>
+            <select value={type} disabled={saving} onChange={(event) => changeType(event.target.value as QuestionType)}>
               {questionTypes.map((item) => <option value={item} key={item}>{questionTypeLabels[item]}</option>)}
             </select>
           </label>
@@ -136,9 +240,10 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
           {type === "short_answer" && <fieldset className="question-fieldset"><legend>ДОПУСТИМІ ВІДПОВІДІ</legend>{accepted.map((answer, index) => <div className="editor-list-row" key={answer.id}><input ref={(element) => setInputRef(answer.id, element)} aria-label={`Допустима відповідь ${index + 1}`} maxLength={LIMITS.shortAnswerLength.max} value={answer.value} onChange={(event) => setAccepted((current) => current.map((value, i) => i === index ? { ...value, value: event.target.value } : value))} placeholder={`Відповідь ${index + 1}`} /><button type="button" aria-label={`Видалити відповідь ${index + 1}`} disabled={accepted.length <= LIMITS.shortAnswerAccepted.min} onClick={() => { focusNeighbor(accepted, index); setAccepted((current) => current.filter((_, i) => i !== index)); }}>×</button></div>)}<button className="editor-secondary" type="button" disabled={accepted.length >= LIMITS.shortAnswerAccepted.max} onClick={() => setAccepted((current) => [...current, { id: makeId(), value: "" }])}>＋ Додати відповідь</button><label className="question-check"><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} /> Розрізняти великі й малі літери</label></fieldset>}
           {errors.length > 0 && <ul className="question-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul>}
           {notice && <p className="question-notice" role="status">{notice}</p>}
-          <button className="primary-button" type="submit">Додати запитання до чернетки</button>
-        </form>
-        <aside className="question-preview-panel"><h3>Орієнтовний перегляд</h3><p className="question-preview-help">Правильні відповіді не позначаються; під час тесту порядок елементів може змінитися.</p>{preview(makeQuestion() as AuthoredQuestion, "current-preview")}<h3>Питання в цій сесії ({questions.length})</h3>{questions.map((question, index) => preview(question, `saved-preview-${index}`))}</aside>
+          <button className="primary-button" type="submit" disabled={saving}>{editingId ? "Зберегти зміни" : "Додати запитання до чернетки"}</button>
+          {editingId && <button className="editor-secondary" type="button" disabled={saving} onClick={resetForm}>Скасувати редагування</button>}
+        </form>}
+        <aside className="question-preview-panel"><h3>Питання в тесті ({questions.length})</h3>{!loading && questions.length === 0 && <p className="question-preview-help">Питань поки немає.</p>}{questions.map((question, index) => <div className="saved-question-row" key={question.id}>{preview(question, `saved-preview-${question.id}`)}{(!supabase || (selectedDraft && draftStatus === "draft")) && <div className="saved-question-actions"><button type="button" disabled={saving || index === 0} onClick={() => void moveQuestion(question, -1)} aria-label={`Перемістити питання ${index + 1} вище`}>↑</button><button type="button" disabled={saving || index === questions.length - 1} onClick={() => void moveQuestion(question, 1)} aria-label={`Перемістити питання ${index + 1} нижче`}>↓</button><button type="button" disabled={saving} onClick={() => loadQuestion(question)}>Редагувати</button><button type="button" className="danger" disabled={saving} onClick={() => void deleteQuestion(question)}>Видалити</button></div>}</div>)}</aside>
       </div>
     </section>
   );

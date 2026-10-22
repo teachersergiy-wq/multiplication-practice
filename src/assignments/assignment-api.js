@@ -23,6 +23,12 @@ export async function publishDraft(client, templateId, teacherId, mode, invoke) 
   }
 }
 
+export function validateQuestionsForPublication(questions, isValidQuestion) {
+  if (!Array.isArray(questions) || questions.length === 0) return { ok: false, reason: "empty" };
+  if (!questions.every(isValidQuestion)) return { ok: false, reason: "invalid" };
+  return { ok: true };
+}
+
 export async function createAssignment(client, values) {
   try {
     const { data, error } = await client.from("assessment_assignments")

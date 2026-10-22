@@ -24,6 +24,10 @@ export function publishDraft(
   mode: AssessmentMode,
   invoke: (client: SupabaseClient, name: "publish-assessment", body: { templateId: string }) => Promise<ApiResult<PublishAssessmentData>>,
 ): Promise<PublishDraftResult>;
+export function validateQuestionsForPublication(
+  questions: unknown[],
+  isValidQuestion: (question: unknown) => boolean,
+): { ok: true } | { ok: false; reason: "empty" | "invalid" };
 export function createAssignment(client: SupabaseClient, values: NewAssignment): Promise<AssignmentMutationResult>;
 export function updateAssignmentWindow(client: SupabaseClient, assignmentId: string, values: AssignmentWindow): Promise<AssignmentMutationResult>;
 export function deleteAssignment(client: SupabaseClient, assignmentId: string): Promise<AssignmentMutationResult>;

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { AssessmentMode } from "../../contracts/api";
 import { apiErrorMessage, invokeFunction } from "../lib/function-api";
 import type { supabase } from "../lib/supabase";
-import { createAssignment, deleteAssignment, fromDateTimeLocal, isValidAssignmentWindow, publishDraft, toDateTimeLocal, updateAssignmentWindow } from "./assignment-api.js";
+import { isAuthoredQuestion } from "../question-validation";
+import { getDraftRequest } from "../questions/editor-api.js";
+import { createAssignment, deleteAssignment, fromDateTimeLocal, isValidAssignmentWindow, publishDraft, toDateTimeLocal, updateAssignmentWindow, validateQuestionsForPublication } from "./assignment-api.js";
 
 type Client = NonNullable<typeof supabase>;
 type Template = {
@@ -30,6 +32,7 @@ interface Props {
   template: Template;
   onClose: () => void;
   onPublished: () => void;
+  editorHasUnsavedChanges: boolean;
 }
 
 function classFromRelation(value: AssignmentRow["classes"]): ClassRow | null {
@@ -44,7 +47,7 @@ function mutationMessage(reason: string): string {
   return "Не вдалося зберегти зміни. Перевірте з’єднання й права доступу та повторіть спробу.";
 }
 
-export function AssignmentManager({ client, teacherId, template, onClose, onPublished }: Props) {
+export function AssignmentManager({ client, teacherId, template, onClose, onPublished, editorHasUnsavedChanges }: Props) {
   const [status, setStatus] = useState(template.status);
   const [mode, setMode] = useState<AssessmentMode>(template.mode);
   const [classes, setClasses] = useState<ClassRow[]>([]);
@@ -94,7 +97,28 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
   useEffect(() => { void loadAssignments(); }, [loadAssignments]);
 
   async function publish() {
+    if (editorHasUnsavedChanges) {
+      setError("Спочатку закрийте це вікно, збережіть або скасуйте незбережені зміни в редакторі, а потім опублікуйте тест.");
+      return;
+    }
     setBusy(true); setError(""); setNotice("");
+    const draft = await invokeFunction(client, "get-assessment-draft", getDraftRequest(template.id));
+    if (!draft.ok) {
+      setBusy(false);
+      setError(apiErrorMessage(draft.error.code));
+      return;
+    }
+    const questionValidation = validateQuestionsForPublication(draft.data.questions, isAuthoredQuestion);
+    if (!questionValidation.ok && questionValidation.reason === "empty") {
+      setBusy(false);
+      setError("Додайте до тесту щонайменше одне збережене запитання перед публікацією.");
+      return;
+    }
+    if (!questionValidation.ok) {
+      setBusy(false);
+      setError("Перевірте запитання: деякі з них не заповнені або не мають правильної відповіді.");
+      return;
+    }
     const result = await publishDraft(client, template.id, teacherId, mode, (apiClient, name, body) => invokeFunction(apiClient, name, body));
     setBusy(false);
     if (!result.ok) {
@@ -184,7 +208,8 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
         <label><input type="radio" name={`mode-${template.id}`} value="practice" checked={mode === "practice"} disabled={busy} onChange={() => setMode("practice")} /><span><strong>Тренування</strong><small>Учень бачить правильність відповіді після кожного запитання.</small></span></label>
         <label><input type="radio" name={`mode-${template.id}`} value="graded" checked={mode === "graded"} disabled={busy} onChange={() => setMode("graded")} /><span><strong>Оцінювання</strong><small>Правильність і результат відкриваються після завершення тесту.</small></span></label>
       </fieldset>
-      <button className="primary-button" type="button" disabled={busy} onClick={() => void publish()}>{busy ? "Публікуємо…" : "Опублікувати тест"}</button>
+      {editorHasUnsavedChanges && <p className="assignment-help" role="status">Є незбережені зміни в редакторі. Закрийте це вікно, збережіть або скасуйте їх перед публікацією.</p>}
+      <button className="primary-button" type="button" disabled={busy || editorHasUnsavedChanges} onClick={() => void publish()}>{busy ? "Публікуємо…" : "Опублікувати тест"}</button>
     </div> : <>
       <p className="assignment-mode-summary">Режим: <strong>{mode === "practice" ? "Тренування" : "Оцінювання"}</strong> · {mode === "practice" ? "підказка після кожної відповіді" : "результат після завершення"}</p>
       <form className="assignment-create" onSubmit={(event) => void assign(event)}>

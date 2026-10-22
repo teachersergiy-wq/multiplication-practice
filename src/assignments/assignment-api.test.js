@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAssignment, deleteAssignment, fromDateTimeLocal, isValidAssignmentWindow, publishDraft, toDateTimeLocal, updateAssignmentWindow } from "./assignment-api.js";
+import { createAssignment, deleteAssignment, fromDateTimeLocal, isValidAssignmentWindow, publishDraft, toDateTimeLocal, updateAssignmentWindow, validateQuestionsForPublication } from "./assignment-api.js";
 
 function mutationClient({ data = { id: "row-1" }, error = null, thrown = null } = {}) {
   const calls = [];
@@ -41,6 +41,13 @@ test("surfaces incomplete assessment and conflict responses from publish-assessm
     assert.equal(result.ok, false);
     assert.equal(result.error.code, code);
   }
+});
+
+test("publication validation requires saved questions and rejects invalid question records", () => {
+  const isValidQuestion = (question) => question.valid === true;
+  assert.deepEqual(validateQuestionsForPublication([], isValidQuestion), { ok: false, reason: "empty" });
+  assert.deepEqual(validateQuestionsForPublication([{ valid: false }], isValidQuestion), { ok: false, reason: "invalid" });
+  assert.deepEqual(validateQuestionsForPublication([{ valid: true }], isValidQuestion), { ok: true });
 });
 
 test("assignment create, window update and cancel use mocked Supabase responses", async () => {

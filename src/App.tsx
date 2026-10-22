@@ -43,6 +43,7 @@ function Dashboard() {
   const [notice, setNotice] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; title: string } | null>(null);
   const [editorVersion, setEditorVersion] = useState(0);
+  const [dirtyQuestionDraftId, setDirtyQuestionDraftId] = useState<string | null>(null);
 
   const visibleDrafts = useMemo(
     () => drafts.filter((draft) => draft.subjectId === subjectCode && draft.grade === grade),
@@ -75,6 +76,15 @@ function Dashboard() {
       ? "Чернетку збережено на цьому пристрої. Після підключення облікового запису її можна буде синхронізувати."
       : "Чернетка доступна до закриття цієї сторінки, але браузер не дозволив її зберегти.");
     window.setTimeout(() => setNotice(""), 5000);
+  }
+
+  function openTemplate(draft: { id: string; title: string }) {
+    if (dirtyQuestionDraftId && selectedTemplate?.id !== draft.id) {
+      if (!window.confirm("У редакторі є незбережене запитання. Відкрити інший тест і відкинути ці зміни?")) return;
+      setDirtyQuestionDraftId(null);
+    }
+    setSelectedTemplate(draft);
+    window.setTimeout(() => document.getElementById("question-editor")?.scrollIntoView({ behavior: "smooth" }), 0);
   }
 
   return (
@@ -133,7 +143,7 @@ function Dashboard() {
 
       <section className="section workspace" id="builder">
         <div className="workspace-main">
-          {teacher && supabase ? <TemplateLibrary client={supabase} teacherId={teacher.userId} subjects={subjects} subjectCode={subjectCode} grade={grade} onGradeChange={setGrade} onPublished={() => setEditorVersion((version) => version + 1)} onOpen={(draft) => { setSelectedTemplate(draft); window.setTimeout(() => document.getElementById("question-editor")?.scrollIntoView({ behavior: "smooth" }), 0); }} /> : <>
+          {teacher && supabase ? <TemplateLibrary client={supabase} teacherId={teacher.userId} subjects={subjects} subjectCode={subjectCode} grade={grade} onGradeChange={setGrade} editorHasUnsavedChanges={dirtyQuestionDraftId !== null && dirtyQuestionDraftId === selectedTemplate?.id} onPublished={() => setEditorVersion((version) => version + 1)} onOpen={openTemplate} /> : <>
           <div className="section-heading workspace-heading">
             <div><div className="eyebrow muted">ВАША БІБЛІОТЕКА</div><h2>Тести та заготовки</h2></div>
             <label className="grade-select">КЛАС <select value={grade} onChange={(event) => setGrade(Number(event.target.value))}>{grades.map((item) => <option key={item} value={item}>{item} клас</option>)}</select></label>
@@ -162,7 +172,7 @@ function Dashboard() {
       </section>
 
       {teacher && <StudentManagement />}
-      <QuestionEditor key={editorVersion} selectedDraft={selectedTemplate} />
+      <QuestionEditor key={`${editorVersion}:${selectedTemplate?.id ?? "new"}`} selectedDraft={selectedTemplate} onUnsavedChangesChange={(draftId, dirty) => setDirtyQuestionDraftId(dirty ? draftId : null)} />
 
       <footer className="footer" id="classes"><span>Маленькі кроки — великі відкриття.</span><span>Навчальна студія <b>✳</b> 2026</span></footer>
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрити">×</button></div>}

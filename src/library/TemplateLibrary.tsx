@@ -27,6 +27,7 @@ interface Props {
   onGradeChange: (grade: number) => void;
   onOpen: (draft: { id: string; title: string }) => void;
   onPublished: () => void;
+  editorHasUnsavedChanges: boolean;
 }
 
 const statusNames: Record<string, string> = {
@@ -35,7 +36,7 @@ const statusNames: Record<string, string> = {
   archived: "Архів",
 };
 
-export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grade, onGradeChange, onOpen, onPublished }: Props) {
+export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grade, onGradeChange, onOpen, onPublished, editorHasUnsavedChanges }: Props) {
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [subjectRows, setSubjectRows] = useState<SubjectRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -202,6 +203,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
       client={client}
       teacherId={teacherId}
       template={managingTemplate}
+      editorHasUnsavedChanges={editorHasUnsavedChanges}
       onClose={() => setManagingTemplate(null)}
       onPublished={() => {
         setManagingTemplate((current) => current?.id === managingTemplate.id ? { ...current, status: "published" } : current);

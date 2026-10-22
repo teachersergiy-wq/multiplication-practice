@@ -52,7 +52,7 @@ begin
   ) on conflict (id) do update set settings = excluded.settings, status = 'draft';
 
   qid := private.save_question_with_key(
-    tpl, null, 1, 'true_false',
+    tpl, tid, null, 1, 'true_false',
     '{"text":"ok?"}'::jsonb, '[]'::jsonb, 1, null,
     '{"type":"true_false","value":true}'::jsonb
   );

@@ -1,6 +1,7 @@
 /**
  * upsert-question — teacher, draft template; atomic public row + private key.
  * Answer key never returned to the client.
+ * SQL also enforces owner + draft (G3b); Edge check is defense in depth.
  */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
@@ -98,6 +99,7 @@ Deno.serve(async (req) => {
 
     const { data: newId, error: saveErr } = await admin.rpc("api_save_question_with_key", {
       p_template_id: body.templateId,
+      p_teacher_id: user.id,
       p_question_id: questionId,
       p_position: position,
       p_question_type: split.questionType,
@@ -113,7 +115,12 @@ Deno.serve(async (req) => {
       if (msg.includes("invalid_request")) {
         return jsonErr(req, "invalid_request", msg.replace(/^invalid_request:\s*/i, ""));
       }
-      if (msg.includes("not found")) return jsonErr(req, "not_found", "Question not found");
+      if (msg.includes("conflict")) {
+        return jsonErr(req, "conflict", "Template is not a draft");
+      }
+      if (msg.includes("not_found") || msg.includes("not found")) {
+        return jsonErr(req, "not_found", "Question not found");
+      }
       console.error("api_save_question_with_key failed");
       return jsonErr(req, "internal", "Failed to save question");
     }

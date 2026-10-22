@@ -35,11 +35,11 @@ select tests.ok(
 );
 
 select tests.ok(
-  not has_function_privilege('anon', 'public.api_save_question_with_key(uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
+  not has_function_privilege('anon', 'public.api_save_question_with_key(uuid,uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
   'anon cannot execute api_save_question_with_key'
 );
 select tests.ok(
-  not has_function_privilege('authenticated', 'public.api_save_question_with_key(uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
+  not has_function_privilege('authenticated', 'public.api_save_question_with_key(uuid,uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
   'authenticated cannot execute api_save_question_with_key'
 );
 select tests.ok(
@@ -47,7 +47,7 @@ select tests.ok(
   'authenticated cannot execute api_get_assessment_draft'
 );
 select tests.ok(
-  has_function_privilege('service_role', 'public.api_save_question_with_key(uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
+  has_function_privilege('service_role', 'public.api_save_question_with_key(uuid,uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
   'service_role can execute api_save_question_with_key'
 );
 
@@ -79,6 +79,7 @@ begin
 
   qid := public.api_save_question_with_key(
     'cccccccc-cccc-cccc-cccc-cccccccccc01',
+    tid,
     null,
     1,
     'true_false',
@@ -99,6 +100,7 @@ begin
   begin
     perform public.api_save_question_with_key(
       'cccccccc-cccc-cccc-cccc-cccccccccc01',
+      tid,
       null,
       2,
       'numeric',

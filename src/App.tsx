@@ -6,6 +6,7 @@ import { StudentManagement } from "./classes/StudentManagement";
 import { QuestionEditor } from "./questions/QuestionEditor";
 import { TemplateLibrary } from "./library/TemplateLibrary";
 import { supabase } from "./lib/supabase";
+import { StudentPortal } from "./students/StudentPortal";
 
 function readDrafts(userStorageKey: string): AssessmentDraft[] {
   try {
@@ -29,7 +30,7 @@ function readDrafts(userStorageKey: string): AssessmentDraft[] {
 }
 
 export function App() {
-  return supabase ? <TeacherAccessGate><Dashboard /></TeacherAccessGate> : <Dashboard />;
+  return supabase ? <TeacherAccessGate studentChildren={<StudentPortal />}><Dashboard /></TeacherAccessGate> : <Dashboard />;
 }
 
 function Dashboard() {

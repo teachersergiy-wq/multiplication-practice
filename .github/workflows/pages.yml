@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 
 # Publishes the built web app (static files only) to GitHub Pages after a change lands on main.
-# The two VITE_ values below are PUBLIC by design (project URL and publishable key; access is
+# The VITE_ values below are PUBLIC by design (project URL and publishable key; access is
 # enforced by RLS and Edge Functions). No secret is used here. Never put a service-role key,
 # a database password or a personal access token in this file.
 
@@ -25,6 +25,7 @@ jobs:
     env:
       VITE_SUPABASE_URL: https://iwydxledvafcgrtylpis.supabase.co
       VITE_SUPABASE_ANON_KEY: sb_publishable_--4udOfCyK30e3Ih2YzeYA_CmwDKppG
+      VITE_STUDENT_EMAIL_DOMAIN: students.local.invalid
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

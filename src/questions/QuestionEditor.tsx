@@ -21,7 +21,10 @@ const moveItem = <T,>(items: T[], index: number, direction: -1 | 1): T[] => {
   return next;
 };
 
-export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string; title: string } | null }) {
+export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
+  selectedDraft?: { id: string; title: string } | null;
+  onUnsavedChangesChange?: (draftId: string | null, dirty: boolean) => void;
+}) {
   const [type, setType] = useState<QuestionType>("numeric");
   const [promptText, setPromptText] = useState("");
   const [points, setPoints] = useState("1");
@@ -45,10 +48,19 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
   const [notice, setNotice] = useState("");
   const inputRefs = useRef(new Map<string, HTMLInputElement>());
 
+  function markFormDirty() {
+    onUnsavedChangesChange?.(selectedDraft?.id ?? null, true);
+  }
+
+  function clearFormDirty() {
+    onUnsavedChangesChange?.(selectedDraft?.id ?? null, false);
+  }
+
   useEffect(() => {
     let active = true;
     setQuestions([]);
     setEditingId(null);
+    onUnsavedChangesChange?.(selectedDraft?.id ?? null, false);
     setNotice("");
     setErrors([]);
     if (!selectedDraft || !supabase) {
@@ -111,6 +123,7 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
   }
 
   function resetForm() {
+    clearFormDirty();
     setEditingId(null); setType("numeric"); setPromptText(""); setPoints("1"); setTimeLimit("");
     setOptions(textItems(4)); setCorrectIndex(null); setCorrectIndexes([]); setItems(textItems(3));
     setPairs(matchItems(2)); setCorrectBoolean(null); setNumericValue(""); setTolerance("");
@@ -140,6 +153,7 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
       setQuestions((current) => [...current, { ...candidate, id: makeId(), position: current.length }]);
       setNotice("Запитання додано лише до цієї демо-сесії.");
       setPromptText("");
+      clearFormDirty();
       return;
     }
     setSaving(true);
@@ -204,7 +218,10 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
       {errors.length > 0 && <ul className="question-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul>}
       {supabase && !selectedDraft && <p className="question-preview-help">Виберіть чернетку у бібліотеці, щоб переглянути або редагувати її питання.</p>}
       <div className="question-editor-grid">
-        {(!supabase || (selectedDraft && draftStatus === "draft")) && <form className="question-form" onSubmit={saveQuestion}>
+        {(!supabase || (selectedDraft && draftStatus === "draft")) && <form className="question-form" onSubmit={saveQuestion} onChange={markFormDirty} onClick={(event) => {
+          const button = (event.target as HTMLElement).closest("button");
+          if (button?.type === "button" && !button.hasAttribute("data-dirty-ignore")) markFormDirty();
+        }}>
           {saving && <p className="question-notice" role="status">Зберігаємо…</p>}
           <label className="field-label">ТИП ЗАПИТАННЯ
             <select value={type} disabled={saving} onChange={(event) => changeType(event.target.value as QuestionType)}>
@@ -241,7 +258,7 @@ export function QuestionEditor({ selectedDraft }: { selectedDraft?: { id: string
           {errors.length > 0 && <ul className="question-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul>}
           {notice && <p className="question-notice" role="status">{notice}</p>}
           <button className="primary-button" type="submit" disabled={saving}>{editingId ? "Зберегти зміни" : "Додати запитання до чернетки"}</button>
-          {editingId && <button className="editor-secondary" type="button" disabled={saving} onClick={resetForm}>Скасувати редагування</button>}
+          {editingId && <button className="editor-secondary" type="button" data-dirty-ignore disabled={saving} onClick={resetForm}>Скасувати редагування</button>}
         </form>}
         <aside className="question-preview-panel"><h3>Питання в тесті ({questions.length})</h3>{!loading && questions.length === 0 && <p className="question-preview-help">Питань поки немає.</p>}{questions.map((question, index) => <div className="saved-question-row" key={question.id}>{preview(question, `saved-preview-${question.id}`)}{(!supabase || (selectedDraft && draftStatus === "draft")) && <div className="saved-question-actions"><button type="button" disabled={saving || index === 0} onClick={() => void moveQuestion(question, -1)} aria-label={`Перемістити питання ${index + 1} вище`}>↑</button><button type="button" disabled={saving || index === questions.length - 1} onClick={() => void moveQuestion(question, 1)} aria-label={`Перемістити питання ${index + 1} нижче`}>↓</button><button type="button" disabled={saving} onClick={() => loadQuestion(question)}>Редагувати</button><button type="button" className="danger" disabled={saving} onClick={() => void deleteQuestion(question)}>Видалити</button></div>}</div>)}</aside>
       </div>

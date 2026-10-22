@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AssessmentMode } from "../../contracts/api";
 import type { AssessmentDraft, Subject } from "../domain";
 import { assessmentDraftStorageKey, migrateAssessmentDrafts } from "../domain";
 import type { supabase } from "../lib/supabase";
+import { AssignmentManager } from "../assignments/AssignmentManager";
 
 type Client = NonNullable<typeof supabase>;
 type SubjectRow = { id: string; code: string; name: string; icon: string };
@@ -11,6 +13,7 @@ type TemplateRow = {
   subject_id: string;
   grade_level: number;
   status: string;
+  mode: AssessmentMode;
   created_at: string;
   updated_at: string;
 };
@@ -23,6 +26,7 @@ interface Props {
   grade: number;
   onGradeChange: (grade: number) => void;
   onOpen: (draft: { id: string; title: string }) => void;
+  onPublished: () => void;
 }
 
 const statusNames: Record<string, string> = {
@@ -31,7 +35,7 @@ const statusNames: Record<string, string> = {
   archived: "Архів",
 };
 
-export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grade, onGradeChange, onOpen }: Props) {
+export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grade, onGradeChange, onOpen, onPublished }: Props) {
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [subjectRows, setSubjectRows] = useState<SubjectRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +45,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
   const [newTitle, setNewTitle] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [managingTemplate, setManagingTemplate] = useState<TemplateRow | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -48,7 +53,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
     try {
       const [templateResult, subjectResult] = await Promise.all([
         client.from("assessment_templates")
-          .select("id,title,subject_id,grade_level,status,created_at,updated_at")
+          .select("id,title,subject_id,grade_level,status,mode,created_at,updated_at")
           .eq("teacher_id", teacherId)
           .order("updated_at", { ascending: false }),
         client.from("subjects").select("id,code,name,icon").eq("active", true),
@@ -188,10 +193,22 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
           <small>{subject.name} <i>·</i> {item.grade_level} клас <i>·</i> {statusNames[item.status] ?? item.status} <i>·</i> {new Date(item.updated_at || item.created_at).toLocaleDateString("uk-UA")}</small>
         </div>
         {item.status === "draft" ? <div className="template-row-actions">
-          {renamingId === item.id ? <><button type="button" disabled={busy} onClick={() => void renameDraft(item.id)}>Зберегти назву</button><button type="button" onClick={() => setRenamingId(null)}>Скасувати</button></> : <><button type="button" onClick={() => { setRenamingId(item.id); setRenameValue(item.title); }}>Перейменувати</button><button type="button" onClick={() => onOpen({ id: item.id, title: item.title })}>Відкрити</button><button type="button" className="danger" disabled={busy} onClick={() => void deleteDraft(item)}>Видалити</button></>}
-        </div> : <button className="template-clone-button" type="button" disabled title="Клонування стане доступним після розгортання clone-assessment">Клонувати · недоступно</button>}
+          {renamingId === item.id ? <><button type="button" disabled={busy} onClick={() => void renameDraft(item.id)}>Зберегти назву</button><button type="button" onClick={() => setRenamingId(null)}>Скасувати</button></> : <><button type="button" onClick={() => { setRenamingId(item.id); setRenameValue(item.title); }}>Перейменувати</button><button type="button" onClick={() => onOpen({ id: item.id, title: item.title })}>Відкрити</button><button type="button" className="template-publish-button" onClick={() => setManagingTemplate(item)}>Опублікувати</button><button type="button" className="danger" disabled={busy} onClick={() => void deleteDraft(item)}>Видалити</button></>}
+        </div> : item.status === "published" ? <div className="template-row-actions"><button type="button" onClick={() => onOpen({ id: item.id, title: item.title })}>Переглянути</button><button type="button" className="template-publish-button" onClick={() => setManagingTemplate(item)}>Керувати призначеннями</button></div> : <button className="template-clone-button" type="button" disabled title="Клонування стане доступним після підключення clone-assessment">Клонувати · недоступно</button>}
       </article>;
     })}</div> : <div className="empty-state"><span>✎</span><strong>Для цього предмета й класу тестів ще немає</strong><p>Створіть чернетку або імпортуйте збережені локальні чернетки.</p></div>}
+    {managingTemplate && <AssignmentManager
+      key={managingTemplate.id}
+      client={client}
+      teacherId={teacherId}
+      template={managingTemplate}
+      onClose={() => setManagingTemplate(null)}
+      onPublished={() => {
+        setManagingTemplate((current) => current?.id === managingTemplate.id ? { ...current, status: "published" } : current);
+        void reload();
+        onPublished();
+      }}
+    />}
   </section>;
 }
 

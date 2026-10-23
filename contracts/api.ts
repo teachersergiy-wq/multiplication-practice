@@ -332,6 +332,44 @@ export type AnswerResponse =
   | { type: "short_answer"; text: string };
 
 /* ------------------------------------------------------------------ */
+/* Classes (teacher)                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Creates a class in the teacher's school with one subject and grade level. */
+export interface CreateClassRequest {
+  /** 1–80 characters after trim; unique within the school. */
+  name: string;
+  subjectId: Uuid;
+  /** Integer 1–12. */
+  gradeLevel: number;
+}
+export interface CreateClassData {
+  classId: Uuid;
+  schoolId: Uuid;
+  name: string;
+  subjectId: Uuid;
+  gradeLevel: number;
+}
+
+/**
+ * Adds a subject + grade to an owned class (idempotent for the same grade).
+ * Changing the grade of an existing subject is rejected with `conflict`
+ * when assignments for that subject exist on the class.
+ */
+export interface SetClassSubjectRequest {
+  classId: Uuid;
+  subjectId: Uuid;
+  gradeLevel: number;
+}
+export interface SetClassSubjectData {
+  classId: Uuid;
+  subjectId: Uuid;
+  gradeLevel: number;
+  /** true when a new class_subjects row was inserted. */
+  created: boolean;
+}
+
+/* ------------------------------------------------------------------ */
 /* Attempts (student only)                                             */
 /* ------------------------------------------------------------------ */
 
@@ -426,6 +464,8 @@ export interface FunctionContracts {
   "reorder-questions": { role: "teacher"; request: ReorderQuestionsRequest; data: ReorderQuestionsData };
   "publish-assessment": { role: "teacher"; request: PublishAssessmentRequest; data: PublishAssessmentData };
   "clone-assessment": { role: "teacher"; request: CloneAssessmentRequest; data: CloneAssessmentData };
+  "create-class": { role: "teacher"; request: CreateClassRequest; data: CreateClassData };
+  "set-class-subject": { role: "teacher"; request: SetClassSubjectRequest; data: SetClassSubjectData };
   "start-attempt": { role: "student"; request: StartAttemptRequest; data: StartAttemptData };
   "submit-answer": { role: "student"; request: SubmitAnswerRequest; data: SubmitAnswerData };
   "finish-attempt": { role: "student"; request: FinishAttemptRequest; data: FinishAttemptData };

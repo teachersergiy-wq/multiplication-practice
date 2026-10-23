@@ -84,3 +84,9 @@ verify_jwt = true
 
 [functions.finish-attempt]
 verify_jwt = true
+
+[functions.create-class]
+verify_jwt = true
+
+[functions.set-class-subject]
+verify_jwt = true

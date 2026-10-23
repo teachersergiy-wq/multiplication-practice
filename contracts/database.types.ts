@@ -1,4 +1,4 @@
-/** Hand-maintained subset for server work (G1). */
+/** Hand-maintained subset for server work (G1 + G7). */
 export type UserRole = "teacher" | "student";
 export type AssessmentStatus = "draft" | "published" | "archived";
 export type AssessmentMode = "practice" | "graded";
@@ -36,12 +36,37 @@ export interface Database {
         Insert: { class_id: string; teacher_id: string };
         Update: Partial<Database["public"]["Tables"]["class_teachers"]["Insert"]>;
       };
+      class_subjects: {
+        Row: {
+          class_id: string; subject_id: string; grade_level: number; created_at: string;
+        };
+        Insert: {
+          class_id: string; subject_id: string; grade_level: number; created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["class_subjects"]["Insert"]>;
+      };
     };
     Functions: {
       api_is_allowed_teacher: { Args: { p_email: string }; Returns: boolean };
       api_provision_teacher: {
         Args: { p_user_id: string; p_full_name: string; p_school_name: string; p_class_name: string };
         Returns: { profileId: string; schoolId: string; classId: string; created: boolean };
+      };
+      api_create_class: {
+        Args: {
+          p_teacher_id: string; p_name: string; p_subject_id: string; p_grade_level: number;
+        };
+        Returns: {
+          classId: string; schoolId: string; name: string; subjectId: string; gradeLevel: number;
+        };
+      };
+      api_set_class_subject: {
+        Args: {
+          p_teacher_id: string; p_class_id: string; p_subject_id: string; p_grade_level: number;
+        };
+        Returns: {
+          classId: string; subjectId: string; gradeLevel: number; created: boolean;
+        };
       };
     };
   };

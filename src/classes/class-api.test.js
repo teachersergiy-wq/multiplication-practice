@@ -2,19 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { assignmentClassAvailability, assignmentNoCompatibleClassMessage, buildClassRequest, classFunctionMessage, classSelectionAfterRefresh, saveClass, validateClassInput } from "./class-api.js";
 
-test("class input trims names and accepts grades 1 through 12", () => {
+test("class input trims names and accepts grades 1 through 11", () => {
   assert.deepEqual(validateClassInput("  8-А  ", "8", "subject-id"), {
     ok: true, name: "8-А", gradeLevel: 8, subjectId: "subject-id",
   });
   assert.equal(validateClassInput("8", 1, "s").ok, true);
-  assert.equal(validateClassInput("8", 12, "s").ok, true);
+  assert.equal(validateClassInput("8", 11, "s").ok, true);
 });
 
 test("class input rejects blank or overlong names, invalid grades, and missing subjects", () => {
   assert.deepEqual(validateClassInput("  ", 8, "s"), { ok: false, reason: "name" });
   assert.deepEqual(validateClassInput("x".repeat(81), 8, "s"), { ok: false, reason: "name" });
   assert.deepEqual(validateClassInput("8", 0, "s"), { ok: false, reason: "grade" });
-  assert.deepEqual(validateClassInput("8", 13, "s"), { ok: false, reason: "grade" });
+  assert.deepEqual(validateClassInput("8", 12, "s"), { ok: false, reason: "grade" });
   assert.deepEqual(validateClassInput("8", 2.5, "s"), { ok: false, reason: "grade" });
   assert.deepEqual(validateClassInput("8", 8, ""), { ok: false, reason: "subject" });
 });

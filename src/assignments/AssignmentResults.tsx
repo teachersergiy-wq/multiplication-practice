@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssignmentResultData } from "./teacher-results.js";
+import { formatScore, teacherQuestionScoreLabel } from "../scoring.js";
 import {
   formatElapsed,
   formatStudentAnswer,
@@ -17,11 +18,6 @@ interface Props {
   className: string;
   templateId: string;
   onClose: () => void;
-}
-
-function points(value: number | string | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
-  return new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(Number(value));
 }
 
 function dateTime(value: string | null | undefined): string {
@@ -76,7 +72,7 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
     </div> : summary && data ? <>
       <div className="teacher-results-summary" aria-label="Підсумок призначення">
         <div><span>Завершили</span><strong>{summary.completedStudentCount} із {summary.rows.length}</strong></div>
-        <div><span>Середній результат</span><strong>{summary.averagePercent === null ? "—" : `${points(summary.averagePercent)}%`}</strong></div>
+        <div><span>Середній результат</span><strong>{summary.averagePercent === null ? "—" : `${formatScore(summary.averagePercent)}%`}</strong></div>
         <div><span>Учнів у класі</span><strong>{summary.rows.length}</strong></div>
       </div>
 
@@ -92,7 +88,7 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
             <tbody>{summary.rows.map((row) => <tr key={row.id}>
               <td data-label="Учень">{row.name}</td>
               <td data-label="Статус"><span className={`teacher-result-status ${row.status}`}>{statusLabel(row.status)}</span></td>
-              <td data-label="Бал / %">{row.latestCompleted ? <>{points(row.latestCompleted.score)} / {points(row.latestCompleted.max_score)}<small>{Number(row.latestCompleted.max_score) > 0 ? `${points(Number(row.latestCompleted.score ?? 0) / Number(row.latestCompleted.max_score) * 100)}%` : "—"}</small></> : "—"}</td>
+              <td data-label="Бал / %">{row.latestCompleted ? <>{formatScore(row.latestCompleted.score)} / {formatScore(row.latestCompleted.max_score)}<small>{Number(row.latestCompleted.max_score) > 0 ? `${formatScore(Number(row.latestCompleted.score ?? 0) / Number(row.latestCompleted.max_score) * 100)}%` : "—"}</small></> : "—"}</td>
               <td data-label="Складено">{row.latestCompleted?.passed === true ? "Так" : row.latestCompleted?.passed === false ? "Ні" : "—"}</td>
               <td data-label="Завершено">{dateTime(row.latestCompleted?.finished_at)}</td>
               <td data-label="Час">{formatElapsed(row.latestCompleted?.elapsed_ms)}</td>
@@ -105,7 +101,7 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
           {summary.rows.map((row) => <article className="teacher-result-card" key={row.id}>
             <div className="teacher-result-card-title"><strong>{row.name}</strong><span className={`teacher-result-status ${row.status}`}>{statusLabel(row.status)}</span></div>
             <dl>
-              <div><dt>Бал / відсоток</dt><dd>{row.latestCompleted ? `${points(row.latestCompleted.score)} / ${points(row.latestCompleted.max_score)} · ${Number(row.latestCompleted.max_score) > 0 ? `${points(Number(row.latestCompleted.score ?? 0) / Number(row.latestCompleted.max_score) * 100)}%` : "—"}` : "—"}</dd></div>
+              <div><dt>Бал / відсоток</dt><dd>{row.latestCompleted ? `${formatScore(row.latestCompleted.score)} / ${formatScore(row.latestCompleted.max_score)} · ${Number(row.latestCompleted.max_score) > 0 ? `${formatScore(Number(row.latestCompleted.score ?? 0) / Number(row.latestCompleted.max_score) * 100)}%` : "—"}` : "—"}</dd></div>
               <div><dt>Складено</dt><dd>{row.latestCompleted?.passed === true ? "Так" : row.latestCompleted?.passed === false ? "Ні" : "—"}</dd></div>
               <div><dt>Завершено</dt><dd>{dateTime(row.latestCompleted?.finished_at)}</dd></div>
               <div><dt>Час</dt><dd>{formatElapsed(row.latestCompleted?.elapsed_ms)}</dd></div>
@@ -116,14 +112,14 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
       </>}
 
       {selectedAttempt && <section className="teacher-attempt-detail" aria-labelledby="teacher-attempt-detail-title">
-        <div className="teacher-attempt-detail-heading"><div><h5 id="teacher-attempt-detail-title">Деталі спроби · {selectedStudent?.name ?? "Учень"}</h5><p>{dateTime(selectedAttempt.finished_at)} · {points(selectedAttempt.score)} з {points(selectedAttempt.max_score)} балів · {formatElapsed(selectedAttempt.elapsed_ms)}</p></div><button type="button" onClick={() => setSelectedAttemptId("")}>Закрити деталі</button></div>
+        <div className="teacher-attempt-detail-heading"><div><h5 id="teacher-attempt-detail-title">Деталі спроби · {selectedStudent?.name ?? "Учень"}</h5><p>{dateTime(selectedAttempt.finished_at)} · {formatScore(selectedAttempt.score)} з {formatScore(selectedAttempt.max_score)} балів · {formatElapsed(selectedAttempt.elapsed_ms)}</p></div><button type="button" onClick={() => setSelectedAttemptId("")}>Закрити деталі</button></div>
         <ol>{data.questions.map((question, index) => {
           const response = responseByQuestion.get(question.id);
           const correct = response ? response.is_correct === true : false;
-          return <li className={`teacher-attempt-question ${correct ? "correct" : "incorrect"}`} key={question.id}>
-            <div className="teacher-attempt-question-title"><strong>{index + 1}. {promptText(question.prompt)}</strong><span>{correct ? "Правильно" : "Неправильно"}</span></div>
+          const partial = !correct && Number(response?.awarded_points ?? 0) > 0;
+          return <li className={`teacher-attempt-question ${correct ? "correct" : partial ? "partial" : "incorrect"}`} key={question.id}>
+            <div className="teacher-attempt-question-title"><strong>{index + 1}. {promptText(question.prompt)}</strong><span>{teacherQuestionScoreLabel(response?.is_correct ?? false, response?.awarded_points ?? 0, question.points)}</span></div>
             <p><span>Відповідь учня:</span> {formatStudentAnswer(question, response)}</p>
-            <small>Бали: {points(response?.awarded_points ?? 0)} з {points(question.points)}</small>
           </li>;
         })}</ol>
       </section>}
@@ -141,7 +137,7 @@ function AttemptHistory({ attempts, studentName, selectedAttemptId, onSelect }: 
   return <details className="teacher-attempt-history">
     <summary>{attempts.length} {attempts.length === 1 ? "спроба" : attempts.length >= 2 && attempts.length <= 4 ? "спроби" : "спроб"}</summary>
     <div>{attempts.map((attempt) => attempt.status === "completed" ? <button type="button" key={attempt.id} className={selectedAttemptId === attempt.id ? "selected" : ""} aria-label={`Деталі спроби ${studentName}: ${dateTime(attempt.finished_at)}`} onClick={() => onSelect(attempt.id)}>
-      Деталі · {dateTime(attempt.finished_at)} · {points(attempt.score)}/{points(attempt.max_score)}
+      Деталі · {dateTime(attempt.finished_at)} · {formatScore(attempt.score)}/{formatScore(attempt.max_score)}
     </button> : <span key={attempt.id}>{statusLabel(attempt.status)} · {dateTime(attempt.started_at)}</span>)}</div>
   </details>;
 }

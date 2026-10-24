@@ -1,8 +1,5 @@
 -- G5 (issue #43): RLS and role isolation. Tests only. No migration.
--- Known gap (not patched here): templates_update_draft_owner WITH CHECK does
--- not require status = 'draft', so the owner of a draft can SET status =
--- 'published' in one UPDATE and skip api_publish_assessment. Published rows
--- themselves stay immutable (asserted below).
+-- After R2, assessment_questions SELECT is owner-only; students get items via Edge Functions.
 
 begin;
 
@@ -82,7 +79,6 @@ begin
     (att_open, q_pub, '{"type":"true_false","value":true}'::jsonb, null, null),
     (att_done, q_pub, '{"type":"true_false","value":true}'::jsonb, true, 1);
 
-  -- teacher B attempt on B's own assignment so student A must not see it
   insert into public.assessment_assignments (template_id, class_id, assigned_by)
   values (tpl_b, class_b, teacher_b);
   insert into public.assessment_attempts (id, assignment_id, student_id, status, finished_at, score, max_score, passed)
@@ -111,7 +107,7 @@ begin
 end;
 $$;
 
--- 1. Student cannot read keys, unassigned questions, or other students' attempts.
+-- 1. Student: no keys; no direct question rows (R2 owner-only SELECT); no foreign attempts/classes.
 select tests.set_jwt(current_setting('tests.g5.student_a')::uuid);
 
 select tests.throws(
@@ -128,11 +124,11 @@ select tests.ok(
 );
 
 select tests.ok(
-  exists (
+  not exists (
     select 1 from public.assessment_questions q
     where q.id = current_setting('tests.g5.q_pub')::uuid
   ),
-  'student A sees questions of the published test assigned to their class'
+  'student cannot SELECT assessment_questions even for assigned published test (Edge-only)'
 );
 
 select tests.ok(
@@ -166,7 +162,7 @@ select tests.throws(
   'student must not update responses (no write grant)'
 );
 
--- 4. Graded scores: in-progress stores null; after finish only the owner sees them.
+-- 4. Graded scores: in-progress null; completed visible only to owner.
 select tests.ok(
   not exists (
     select 1 from public.assessment_responses r
@@ -193,13 +189,13 @@ select tests.ok(
   'student A does not see student B response scores'
 );
 
--- Trigger: writing a score before finish must fail (weakening the trigger fails this).
+-- Trigger: writing a score before finish must fail.
 select tests.clear_jwt();
 select tests.throws(
   format(
     $q$
       insert into public.assessment_responses (attempt_id, question_id, response, is_correct, awarded_points)
-      values (%L, %L, '{"type":"true_false","value":false}'::jsonb, false, 0)
+      values (%L, %L, '{"type":"true_false","value":false}'::jsonb, true, 1)
     $q$,
     current_setting('tests.g5.att_open'),
     current_setting('tests.g5.q_pub')
@@ -207,44 +203,31 @@ select tests.throws(
   'graded in_progress insert must reject is_correct/awarded_points'
 );
 
--- 2. Teacher A vs B, and assignment rules.
+-- 2. Teacher A isolation vs teacher B.
 select tests.set_jwt(current_setting('tests.g5.teacher_a')::uuid);
 
 select tests.ok(
   not exists (
-    select 1 from public.assessment_templates
-    where id = current_setting('tests.g5.tpl_b')::uuid
+    select 1 from public.assessment_templates t
+    where t.id = current_setting('tests.g5.tpl_b')::uuid
   ),
   'teacher A does not see teacher B template'
 );
 
 select tests.ok(
   not exists (
-    select 1 from public.profiles
-    where id = current_setting('tests.g5.student_b')::uuid
+    select 1 from public.class_students cs
+    where cs.student_id = current_setting('tests.g5.student_b')::uuid
   ),
-  'teacher A does not see teacher B student profile'
+  'teacher A does not see teacher B student link'
 );
 
 select tests.ok(
   not exists (
-    select 1 from public.assessment_attempts
-    where id = current_setting('tests.g5.att_b')::uuid
+    select 1 from public.assessment_attempts a
+    where a.id = current_setting('tests.g5.att_b')::uuid
   ),
-  'teacher A does not see teacher B class attempts'
-);
-
-select tests.throws(
-  format(
-    $q$
-      insert into public.assessment_assignments (template_id, class_id, assigned_by)
-      values (%L, %L, %L)
-    $q$,
-    current_setting('tests.g5.tpl_draft'),
-    current_setting('tests.g5.class_a'),
-    current_setting('tests.g5.teacher_a')
-  ),
-  'cannot assign a draft template'
+  'teacher A does not see teacher B student attempt'
 );
 
 select tests.throws(
@@ -266,11 +249,24 @@ select tests.throws(
       insert into public.assessment_assignments (template_id, class_id, assigned_by)
       values (%L, %L, %L)
     $q$,
+    current_setting('tests.g5.tpl_draft'),
+    current_setting('tests.g5.class_a'),
+    current_setting('tests.g5.teacher_a')
+  ),
+  'cannot assign a draft template'
+);
+
+select tests.throws(
+  format(
+    $q$
+      insert into public.assessment_assignments (template_id, class_id, assigned_by)
+      values (%L, %L, %L)
+    $q$,
     current_setting('tests.g5.tpl_grade'),
     current_setting('tests.g5.class_a'),
     current_setting('tests.g5.teacher_a')
   ),
-  'cannot assign a template whose grade is not on the class'
+  'cannot assign template with mismatched grade_level'
 );
 
 select tests.throws(
@@ -286,7 +282,10 @@ select tests.throws(
   'cannot assign to a class the teacher does not manage'
 );
 
--- 5. Published rows are immutable for the owning client role.
+-- 5. Published immutable; draft owner cannot SET status=published (R3 WITH CHECK).
+select tests.set_jwt(current_setting('tests.g5.teacher_a')::uuid);
+set local role authenticated;
+
 select tests.updates_zero_rows(
   format(
     'update public.assessment_templates set title = %L where id = %L',
@@ -305,7 +304,39 @@ select tests.updates_zero_rows(
   'owner must not update questions of a published template'
 );
 
+-- D3: publishing via client UPDATE must fail (WITH CHECK status = draft) or affect 0 rows.
+do $$
+begin
+  begin
+    update public.assessment_templates
+       set status = 'published'
+     where id = current_setting('tests.g5.tpl_draft')::uuid;
+    if found then
+      perform tests.fail('draft owner must not publish via client UPDATE (row changed)');
+    end if;
+  exception
+    when insufficient_privilege then null;
+    when others then
+      if sqlerrm not like '%policy%' and sqlerrm not like '%permission%' and sqlerrm not like '%check%' then
+        perform tests.fail('unexpected error publishing draft: ' || sqlerrm);
+      end if;
+  end;
+end;
+$$;
+
+reset role;
+select tests.clear_jwt();
+
+select tests.ok(
+  exists (
+    select 1 from public.assessment_templates
+    where id = current_setting('tests.g5.tpl_draft')::uuid and status = 'draft'
+  ),
+  'draft remains draft after client publish attempt'
+);
+
 select tests.set_jwt(current_setting('tests.g5.student_a')::uuid);
+set local role authenticated;
 select tests.updates_zero_rows(
   format(
     'update public.assessment_templates set status = %L where id = %L',
@@ -314,9 +345,10 @@ select tests.updates_zero_rows(
   ),
   'student must not change template status'
 );
-
--- 3. anon: no table DML and no api_/private execute.
+reset role;
 select tests.clear_jwt();
+
+-- 3. anon: no table access and no api_/private execute.
 set local role anon;
 select tests.throws(
   'select count(*) from public.assessment_templates',
@@ -332,8 +364,8 @@ select tests.throws(
 );
 reset role;
 
--- 6. EXECUTE allowlist. Fails when a new function is granted to anon/authenticated
--- without an explicit decision. Trigger functions are excluded (not RPCs).
+-- 6. EXECUTE allowlist (policy helpers only for authenticated; anon none).
+-- Exclude trigger return type and the tests helper schema.
 select tests.ok(
   not exists (
     select 1
@@ -342,6 +374,7 @@ select tests.ok(
     join pg_type t on t.oid = p.prorettype
     where n.nspname in ('public', 'private')
       and t.typname <> 'trigger'
+      and p.prokind = 'f'
       and (
         has_function_privilege('anon', p.oid, 'execute')
         or has_function_privilege('authenticated', p.oid, 'execute')

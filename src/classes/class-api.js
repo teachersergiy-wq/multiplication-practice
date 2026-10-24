@@ -1,7 +1,7 @@
 export function validateClassInput(name, gradeLevel, subjectId) {
   const trimmedName = typeof name === "string" ? name.trim() : "";
   if (trimmedName.length < 1 || trimmedName.length > 80) return { ok: false, reason: "name" };
-  if (!Number.isInteger(Number(gradeLevel)) || Number(gradeLevel) < 1 || Number(gradeLevel) > 12) {
+  if (!Number.isInteger(Number(gradeLevel)) || Number(gradeLevel) < 1 || Number(gradeLevel) > 11) {
     return { ok: false, reason: "grade" };
   }
   if (typeof subjectId !== "string" || !subjectId) return { ok: false, reason: "subject" };

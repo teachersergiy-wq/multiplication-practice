@@ -192,7 +192,6 @@ select tests.ok(
   'student A does not see student B response scores'
 );
 
--- Trigger raises on INSERT with scores while graded+in_progress (UPDATE allowed for finalize).
 select tests.clear_jwt();
 select tests.throws(
   format(
@@ -296,13 +295,14 @@ select tests.updates_zero_rows(
   'owner must not update a published template'
 );
 
-select tests.updates_zero_rows(
+-- R2 revoked UPDATE on assessment_questions for authenticated → permission denied (not silent 0 rows).
+select tests.throws(
   format(
     'update public.assessment_questions set prompt = %L::jsonb where id = %L',
     '{"text":"hacked"}',
     current_setting('tests.g5.q_pub')
   ),
-  'owner must not update questions of a published template'
+  'owner must not update questions of a published template (no UPDATE grant)'
 );
 
 do $$

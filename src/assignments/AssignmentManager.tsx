@@ -7,6 +7,7 @@ import { getDraftRequest } from "../questions/editor-api.js";
 import { createAssignment, deleteAssignment, fromDateTimeLocal, isValidAssignmentWindow, publishDraft, toDateTimeLocal, updateAssignmentWindow, validateQuestionsForPublication } from "./assignment-api.js";
 import { announceClassListChanged, assignmentClassAvailability, assignmentNoCompatibleClassMessage } from "../classes/class-api.js";
 import { ClassSetupDialog } from "../classes/ClassSetupDialog";
+import { AssignmentResults } from "./AssignmentResults";
 
 type Client = NonNullable<typeof supabase>;
 type Template = {
@@ -238,7 +239,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
         </> : classAvailability === "already-assigned" ? <p className="assignment-empty">Усі сумісні класи вже мають це призначення.</p> : <div className="assignment-empty class-assignment-empty"><p>{assignmentNoCompatibleClassMessage(template.grade_level, subjectName)}</p><button type="button" onClick={() => setClassSetupOpen(true)}>Створити або налаштувати клас</button></div>}
       </form>
       <div className="assignment-list"><h4>Призначення класам</h4>
-        {loading ? <p className="assignment-empty" role="status">Завантажуємо призначення…</p> : assignments.length ? assignments.map((item) => <AssignmentEditor key={item.id} assignment={item} className={classFromRelation(item.classes)?.name ?? "Клас"} busy={busy} onSave={saveWindow} onCancel={() => void cancelAssignment(item)} />) : <p className="assignment-empty">Тест ще не призначено жодному класу.</p>}
+        {loading ? <p className="assignment-empty" role="status">Завантажуємо призначення…</p> : assignments.length ? assignments.map((item) => <AssignmentEditor key={item.id} assignment={item} client={client} templateId={template.id} className={classFromRelation(item.classes)?.name ?? "Клас"} busy={busy} onSave={saveWindow} onCancel={() => void cancelAssignment(item)} />) : <p className="assignment-empty">Тест ще не призначено жодному класу.</p>}
       </div>
     </>}
     {error && <p className="template-error" role="alert">{error}</p>}
@@ -252,8 +253,10 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
   </section>;
 }
 
-function AssignmentEditor({ assignment, className, busy, onSave, onCancel }: {
+function AssignmentEditor({ assignment, client, templateId, className, busy, onSave, onCancel }: {
   assignment: AssignmentRow;
+  client: Client;
+  templateId: string;
   className: string;
   busy: boolean;
   onSave: (assignmentId: string, values: { opensAt: string; closesAt: string; allowRetries: boolean }) => Promise<boolean>;
@@ -262,6 +265,7 @@ function AssignmentEditor({ assignment, className, busy, onSave, onCancel }: {
   const [opensAt, setOpensAt] = useState(toDateTimeLocal(assignment.opens_at));
   const [closesAt, setClosesAt] = useState(toDateTimeLocal(assignment.closes_at));
   const [allowRetries, setAllowRetries] = useState(assignment.allow_retries);
+  const [resultsOpen, setResultsOpen] = useState(false);
   useEffect(() => {
     setOpensAt(toDateTimeLocal(assignment.opens_at));
     setClosesAt(toDateTimeLocal(assignment.closes_at));
@@ -275,6 +279,7 @@ function AssignmentEditor({ assignment, className, busy, onSave, onCancel }: {
       <label className="field-label">ЗАКРИВАЄТЬСЯ<input type="datetime-local" value={closesAt} onChange={(event) => setClosesAt(event.target.value)} disabled={busy} /></label>
     </div>
     <label className="assignment-retry"><input type="checkbox" checked={allowRetries} disabled={busy} onChange={(event) => setAllowRetries(event.target.checked)} />Дозволити повторну спробу</label>
-    <div className="assignment-item-actions"><button type="button" disabled={busy || !changed} onClick={() => void onSave(assignment.id, { opensAt, closesAt, allowRetries })}>Зберегти параметри</button><button type="button" className="danger" disabled={busy} onClick={onCancel}>Скасувати призначення</button></div>
+    <div className="assignment-item-actions"><button type="button" disabled={busy || !changed} onClick={() => void onSave(assignment.id, { opensAt, closesAt, allowRetries })}>Зберегти параметри</button><button type="button" className="teacher-results-toggle" aria-expanded={resultsOpen} onClick={() => setResultsOpen((open) => !open)}>{resultsOpen ? "Сховати результати" : "Результати класу"}</button><button type="button" className="danger" disabled={busy} onClick={onCancel}>Скасувати призначення</button></div>
+    {resultsOpen && <AssignmentResults client={client} assignmentId={assignment.id} classId={assignment.class_id} className={className} templateId={templateId} onClose={() => setResultsOpen(false)} />}
   </article>;
 }

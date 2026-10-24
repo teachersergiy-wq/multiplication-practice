@@ -4,6 +4,7 @@ import type { AnswerResponse, FinishAttemptData, PublicQuestion, StartAttemptDat
 import { useStudentIdentity } from "../auth/TeacherAccessGate";
 import { invokeFunction } from "../lib/function-api";
 import { supabase } from "../lib/supabase";
+import { formatScore, partialCreditHint, practiceFeedbackText } from "../scoring.js";
 import { assignmentWindow, attemptStorage, clearAllAttemptDrafts, clearAttemptDraft, publicFeedback, readAttemptDraft, remainingSeconds, responseForQuestion, studentApiMessage, writeAttemptDraft } from "./student-flow.js";
 
 type AssignmentRow = {
@@ -239,8 +240,8 @@ export function StudentPortal({ client = supabase }: { client?: SupabaseClient |
         })}
       </section> : <section className="student-list" aria-label="Історія спроб"><h2>Мої спроби</h2>{!attempts.length ? <div className="student-empty">Тут з’являться завершені спроби.</div> : attempts.map((item) => {
         const assignment = assignments.find((row) => row.id === item.assignment_id);
-        const percent = item.score !== null && item.max_score ? Math.round((Number(item.score) / Number(item.max_score)) * 100) : null;
-        return <article className="student-history-row" key={item.id}><div><strong>{assignment?.template.title ?? "Тест"}</strong><small>{new Date(item.started_at).toLocaleString("uk-UA", { dateStyle: "medium", timeStyle: "short" })}</small></div><span>{item.status === "completed" ? percent === null ? "Завершено" : `${percent}% · ${item.score}/${item.max_score}` : item.status === "abandoned" ? "Час завершився" : "У процесі"}</span></article>;
+        const percent = item.score !== null && Number(item.max_score) > 0 ? Number(item.score) / Number(item.max_score) * 100 : null;
+        return <article className="student-history-row" key={item.id}><div><strong>{assignment?.template.title ?? "Тест"}</strong><small>{new Date(item.started_at).toLocaleString("uk-UA", { dateStyle: "medium", timeStyle: "short" })}</small></div><span>{item.status === "completed" ? percent === null ? "Завершено" : `${formatScore(percent)}% · ${formatScore(item.score)}/${formatScore(item.max_score)}` : item.status === "abandoned" ? "Час завершився" : "У процесі"}</span></article>;
       })}</section>}
     </section>
   </main>;
@@ -262,8 +263,8 @@ function AttemptScreen(props: {
   return <main className="student-shell student-test-shell">
     <header className="student-test-header"><a className="brand" href="#home" aria-label="Навчальна студія"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a>{remaining !== null && <span className="student-timer" aria-live="off">Залишилось {formatTime(remaining)}</span>}</header>
     <section className="student-question-area"><div className="student-progress"><span>Запитання {index} з {total}</span><div role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={index}><i style={{ width: `${Math.min(100, index / total * 100)}%` }} /></div></div>
-      <article className="student-question-card"><p className="student-question-prompt">{question.promptText}</p><AnswerControl question={question} value={value} disabled={busy || complete} onChange={onChange} />
-        {feedback && mode === "practice" && <p className={`student-feedback ${feedback.isCorrect ? "is-correct" : "is-incorrect"}`} role="status">{feedback.isCorrect ? "Правильно!" : "Поки не вийшло. Наступне запитання допоможе потренуватися."}{feedback.isCorrect ? ` · ${feedback.awardedPoints} бал.` : ""}</p>}
+      <article className="student-question-card"><p className="student-question-prompt">{question.promptText}</p>{partialCreditHint(question.type) && <p className="partial-credit-hint">{partialCreditHint(question.type)}</p>}<AnswerControl question={question} value={value} disabled={busy || complete} onChange={onChange} />
+        {feedback && mode === "practice" && <p className={`student-feedback ${feedback.isCorrect ? "is-correct" : feedback.awardedPoints > 0 ? "is-partial" : "is-incorrect"}`} role="status">{practiceFeedbackText(feedback, question.points)}</p>}
       </article>
     </section>
     <footer className="student-action-bar">{message && <p role="status">{message}</p>}{complete ? <div className="student-action-buttons"><button className="student-button secondary" disabled={busy} onClick={onContinue}>Далі</button><button className="student-button" disabled={busy} onClick={onFinish}>{busy ? "Зберігаємо…" : allAnswered ? "Завершити тест" : "Завершити раніше"}</button></div> : <button className="student-button" disabled={busy || !responseForQuestion(question, value)} onClick={onSubmit}>{busy ? "Зберігаємо відповідь…" : "Зберегти й далі"}</button>}</footer>
@@ -300,7 +301,7 @@ function MatchingControl({ question, value, disabled, onChange }: { question: Ex
 }
 
 function StudentResult({ result, onBack }: { result: FinishAttemptData; onBack: () => void }) {
-  return <main className="student-shell"><header className="student-topbar"><a className="brand" href="#home"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a></header><section className="student-result-card"><p className="student-kicker">ТЕСТ ЗАВЕРШЕНО</p><h1>Твій результат</h1><div className="student-result-score">{result.percent}<small>%</small></div><p className="student-result-points">{result.score} з {result.maxScore} балів</p>{result.passed !== null && <p className={result.passed ? "student-passed" : "student-not-passed"}>{result.passed ? "Чудова робота — тест складено!" : "Ще трохи практики — і все вийде."}</p>}<p>Правильних відповідей: {result.answeredCount - result.mistakes} із {result.questionCount}</p><p>Помилок: {result.mistakes}</p><button className="student-button" onClick={onBack}>До моїх спроб</button></section></main>;
+  return <main className="student-shell"><header className="student-topbar"><a className="brand" href="#home"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a></header><section className="student-result-card"><p className="student-kicker">ТЕСТ ЗАВЕРШЕНО</p><h1>Твій результат</h1><div className="student-result-score">{formatScore(result.percent)}<small>%</small></div><p className="student-result-points">{formatScore(result.score)} з {formatScore(result.maxScore)} балів</p>{result.passed !== null && <p className={result.passed ? "student-passed" : "student-not-passed"}>{result.passed ? "Чудова робота — тест складено!" : "Ще трохи практики — і все вийде."}</p>}<p>Правильних відповідей: {result.answeredCount - result.mistakes} із {result.questionCount}</p><p>Помилок: {result.mistakes}</p><button className="student-button" onClick={onBack}>До моїх спроб</button></section></main>;
 }
 
 function formatTime(seconds: number) {

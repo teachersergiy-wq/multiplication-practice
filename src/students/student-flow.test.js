@@ -65,6 +65,18 @@ test("mock attempt responses reveal feedback in practice only and keep graded op
   assert.equal(publicFeedback("practice", { ok: false, error: { code: "attempt_expired" } }), null);
 });
 
+test("mock feedback keeps partial and full credit in practice and hides all graded feedback", () => {
+  for (const feedback of [
+    { isCorrect: false, awardedPoints: 2.5 },
+    { isCorrect: true, awardedPoints: 4 },
+    { isCorrect: false, awardedPoints: 0 },
+  ]) {
+    const mock = { ok: true, data: { accepted: true, feedback } };
+    assert.deepEqual(publicFeedback("practice", mock), feedback);
+    assert.equal(publicFeedback("graded", mock), null);
+  }
+});
+
 test("attempt error fixtures preserve actionable responses without exposing server text", () => {
   const failures = ["attempt_expired", "already_answered", "retry_not_allowed", "assignment_not_open", "assignment_closed", "internal"];
   for (const code of failures) {

@@ -5,6 +5,8 @@ import type { supabase } from "../lib/supabase";
 import { isAuthoredQuestion } from "../question-validation";
 import { getDraftRequest } from "../questions/editor-api.js";
 import { createAssignment, deleteAssignment, fromDateTimeLocal, isValidAssignmentWindow, publishDraft, toDateTimeLocal, updateAssignmentWindow, validateQuestionsForPublication } from "./assignment-api.js";
+import { announceClassListChanged, assignmentClassAvailability, assignmentNoCompatibleClassMessage } from "../classes/class-api.js";
+import { ClassSetupDialog } from "../classes/ClassSetupDialog";
 
 type Client = NonNullable<typeof supabase>;
 type Template = {
@@ -60,15 +62,18 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [subjectName, setSubjectName] = useState("обраного предмета");
+  const [classSetupOpen, setClassSetupOpen] = useState(false);
 
   const loadAssignments = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [teacherClasses, matchingSubjects, assignmentResult] = await Promise.all([
+      const [teacherClasses, matchingSubjects, assignmentResult, subjectResult] = await Promise.all([
         client.from("class_teachers").select("class_id, classes(id,name)").eq("teacher_id", teacherId),
         client.from("class_subjects").select("class_id").eq("subject_id", template.subject_id).eq("grade_level", template.grade_level),
         client.from("assessment_assignments").select("id,class_id,opens_at,closes_at,allow_retries,created_at,classes(id,name)").eq("template_id", template.id).order("created_at", { ascending: false }),
+        client.from("subjects").select("name").eq("id", template.subject_id).maybeSingle(),
       ]);
       if (teacherClasses.error || matchingSubjects.error || assignmentResult.error) {
         setError("Не вдалося завантажити класи або призначення. Перевірте з’єднання й доступ та спробуйте ще раз.");
@@ -82,6 +87,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
         return related && subjectClassIds.has(row.class_id) ? [related] : [];
       });
       const savedAssignments = (assignmentResult.data ?? []) as unknown as AssignmentRow[];
+      if (subjectResult.data?.name) setSubjectName(subjectResult.data.name);
       const alreadyAssigned = new Set(savedAssignments.map((item) => item.class_id));
       const unassignedClasses = compatibleClasses.filter((item) => !alreadyAssigned.has(item.id));
       setClasses(compatibleClasses);
@@ -95,6 +101,11 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
   }, [client, teacherId, template.grade_level, template.id, template.subject_id]);
 
   useEffect(() => { void loadAssignments(); }, [loadAssignments]);
+  useEffect(() => {
+    const refresh = () => { void loadAssignments(); };
+    window.addEventListener("learning-studio:classes-changed", refresh);
+    return () => window.removeEventListener("learning-studio:classes-changed", refresh);
+  }, [loadAssignments]);
 
   async function publish() {
     if (editorHasUnsavedChanges) {
@@ -193,6 +204,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
 
   const assignedClassIds = new Set(assignments.map((item) => item.class_id));
   const availableClasses = classes.filter((item) => !assignedClassIds.has(item.id));
+  const classAvailability = assignmentClassAvailability(classes.length, availableClasses.length);
 
   return <section className="assignment-panel" aria-labelledby="assignment-panel-title">
     <div className="assignment-panel-heading">
@@ -214,7 +226,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
       <p className="assignment-mode-summary">Режим: <strong>{mode === "practice" ? "Тренування" : "Оцінювання"}</strong> · {mode === "practice" ? "підказка після кожної відповіді" : "результат після завершення"}</p>
       <form className="assignment-create" onSubmit={(event) => void assign(event)}>
         <h4>Призначити класу</h4>
-        {loading ? <p className="assignment-empty" role="status">Завантажуємо доступні класи й призначення…</p> : availableClasses.length ? <>
+        {loading ? <p className="assignment-empty" role="status">Завантажуємо доступні класи й призначення…</p> : classAvailability === "available" ? <>
           <label className="field-label">КЛАС<select value={classId} disabled={busy} onChange={(event) => setClassId(event.target.value)}>{availableClasses.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
           <div className="assignment-date-grid">
             <label className="field-label">ВІДКРИВАЄТЬСЯ<input type="datetime-local" value={opensAt} onChange={(event) => setOpensAt(event.target.value)} disabled={busy} /></label>
@@ -223,7 +235,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
           <label className="assignment-retry"><input type="checkbox" checked={allowRetries} disabled={busy} onChange={(event) => setAllowRetries(event.target.checked)} />Дозволити повторну спробу</label>
           <small className="assignment-help">Залиште дату порожньою, якщо завдання не має відповідної часової межі.</small>
           <button className="primary-button" type="submit" disabled={busy || loading}>{busy ? "Призначаємо…" : "Призначити тест"}</button>
-        </> : <p className="assignment-empty">Немає доступного класу цього предмета й рівня, або тест уже призначено всім відповідним класам.</p>}
+        </> : classAvailability === "already-assigned" ? <p className="assignment-empty">Усі сумісні класи вже мають це призначення.</p> : <div className="assignment-empty class-assignment-empty"><p>{assignmentNoCompatibleClassMessage(template.grade_level, subjectName)}</p><button type="button" onClick={() => setClassSetupOpen(true)}>Створити або налаштувати клас</button></div>}
       </form>
       <div className="assignment-list"><h4>Призначення класам</h4>
         {loading ? <p className="assignment-empty" role="status">Завантажуємо призначення…</p> : assignments.length ? assignments.map((item) => <AssignmentEditor key={item.id} assignment={item} className={classFromRelation(item.classes)?.name ?? "Клас"} busy={busy} onSave={saveWindow} onCancel={() => void cancelAssignment(item)} />) : <p className="assignment-empty">Тест ще не призначено жодному класу.</p>}
@@ -231,6 +243,12 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
     </>}
     {error && <p className="template-error" role="alert">{error}</p>}
     {notice && <p className="template-notice" role="status">{notice}</p>}
+    {classSetupOpen && <ClassSetupDialog client={client} teacherId={teacherId} initialSubjectId={template.subject_id} initialGradeLevel={template.grade_level} onClose={() => setClassSetupOpen(false)} onSaved={(result) => {
+      setClassSetupOpen(false);
+      announceClassListChanged();
+      setNotice("Клас і предмет налаштовано. Оновлюємо список сумісних класів…");
+      if ("name" in result) setNotice(`Клас «${result.name}» створено. Оновлюємо список сумісних класів…`);
+    }} />}
   </section>;
 }
 

@@ -31,7 +31,6 @@ declare
   v_match_ok integer;
   v_match_total integer;
   kp jsonb;
-  rp jsonb;
 begin
   if p_answer_key is null or p_response is null then
     return query select false, 0::numeric;
@@ -52,7 +51,6 @@ begin
     v_f := case when v_ok then 1 else 0 end;
 
   elsif p_question_type = 'multiple_choice' then
-    -- f = max(0, (k - w) / n); n = |correct key ids|, k = hits, w = false positives
     select coalesce(array_agg(distinct x order by x), '{}') into b
     from jsonb_array_elements_text(coalesce(p_answer_key->'choiceIds', '[]'::jsonb)) as x;
     select coalesce(array_agg(distinct x order by x), '{}') into a
@@ -70,7 +68,6 @@ begin
     v_ok := (v_f = 1);
 
   elsif p_question_type = 'ordering' then
-    -- f = fraction of items on the correct position
     select coalesce(array_agg(x order by ordinality), '{}') into a
     from jsonb_array_elements_text(coalesce(p_response->'order', '[]'::jsonb))
       with ordinality as t(x, ordinality);
@@ -92,7 +89,6 @@ begin
     v_ok := (v_f = 1);
 
   elsif p_question_type = 'matching' then
-    -- f = fraction of key pairs present in the response
     v_match_total := jsonb_array_length(coalesce(p_answer_key->'pairs', '[]'::jsonb));
     if v_match_total < 1 then
       v_f := 0;
@@ -158,7 +154,6 @@ revoke all on function private.score_response(public.question_type, jsonb, jsonb
 grant execute on function private.score_response(public.question_type, jsonb, jsonb, numeric)
   to service_role;
 
--- Existing keys for partial types → checker_version 2 (completed attempts are not rescored).
 update private.assessment_answer_keys k
 set checker_version = 2
 from public.assessment_questions q
@@ -166,7 +161,6 @@ where k.question_id = q.id
   and q.question_type in ('multiple_choice', 'ordering', 'matching')
   and k.checker_version is distinct from 2;
 
--- New keys: version depends on type (replace save_question_with_key body tail only via full replace).
 create or replace function private.save_question_with_key(
   p_template_id uuid,
   p_teacher_id uuid,
@@ -186,23 +180,21 @@ set search_path = public, private, pg_temp
 as $$
 declare
   v_id uuid;
-  v_status public.assessment_status;
   v_owner uuid;
+  v_status public.assessment_status;
   v_version integer;
 begin
   if p_answer_key is null then
-    raise exception 'answer_key required' using errcode = 'P0001';
+    raise exception 'answer_key required';
   end if;
 
   select teacher_id, status into v_owner, v_status
   from public.assessment_templates
-  where id = p_template_id;
+  where id = p_template_id
+  for update;
 
-  if v_owner is null then
+  if v_owner is null or v_owner is distinct from p_teacher_id then
     raise exception 'not_found' using errcode = 'P0001';
-  end if;
-  if v_owner is distinct from p_teacher_id then
-    raise exception 'forbidden' using errcode = 'P0001';
   end if;
   if v_status is distinct from 'draft' then
     raise exception 'conflict: template not draft' using errcode = 'P0001';

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CreatedStudent } from "../../contracts/api";
+import type { CreateClassData, CreatedStudent, SetClassSubjectData } from "../../contracts/api";
 import { apiErrorMessage, invokeFunction } from "../lib/function-api";
 import { supabase } from "../lib/supabase";
+import { CLASS_LIST_CHANGED_EVENT, announceClassListChanged, classSelectionAfterRefresh } from "./class-api.js";
+import { ClassSetupDialog } from "./ClassSetupDialog";
 
 interface ClassRow {
   id: string;
   name: string;
+  subjects: { subjectId: string; gradeLevel: number }[];
 }
 interface StudentRow {
   student_id: string;
@@ -20,9 +23,19 @@ export function StudentManagement() {
   const [credentials, setCredentials] = useState<CreatedStudent[] | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [configureClassId, setConfigureClassId] = useState("");
+  const [teacherId, setTeacherId] = useState("");
   const client = supabase;
 
-  const loadClasses = useCallback(async () => {
+  useEffect(() => {
+    if (!client) return;
+    let active = true;
+    void client.auth.getUser().then(({ data }) => { if (active) setTeacherId(data.user?.id ?? ""); });
+    return () => { active = false; };
+  }, [client]);
+
+  const loadClasses = useCallback(async (preferredClassId = "") => {
     if (!client) return;
     const { data, error } = await client.from("class_teachers")
       .select("class_id, classes(id, name)").order("class_id");
@@ -30,12 +43,24 @@ export function StudentManagement() {
       setMessage("Не вдалося завантажити класи. Спробуйте оновити сторінку.");
       return;
     }
-    const rows = (data ?? []).flatMap((row: { classes: ClassRow | ClassRow[] | null }) => {
+    const classRows = (data ?? []).flatMap((row: { class_id: string; classes: { id: string; name: string } | { id: string; name: string }[] | null }) => {
       const value = Array.isArray(row.classes) ? row.classes[0] : row.classes;
-      return value ? [value] : [];
+      return value ? [{ ...value, subjects: [] as ClassRow["subjects"] }] : [];
     });
+    const subjectResult = classRows.length
+      ? await client.from("class_subjects").select("class_id,subject_id,grade_level").in("class_id", classRows.map((item) => item.id))
+      : { data: [], error: null };
+    if (subjectResult.error) {
+      setMessage("Не вдалося завантажити налаштування класів. Спробуйте оновити сторінку.");
+      return;
+    }
+    for (const mapping of subjectResult.data ?? []) {
+      const row = classRows.find((item) => item.id === mapping.class_id);
+      row?.subjects.push({ subjectId: mapping.subject_id, gradeLevel: mapping.grade_level });
+    }
+    const rows = classRows;
     setClasses(rows);
-    setClassId((current) => current && rows.some((item) => item.id === current) ? current : rows[0]?.id ?? "");
+    setClassId((current) => classSelectionAfterRefresh(rows, current, preferredClassId));
   }, [client]);
 
   const loadStudents = useCallback(async () => {
@@ -51,6 +76,11 @@ export function StudentManagement() {
   }, [client, classId]);
 
   useEffect(() => { void loadClasses(); }, [loadClasses]);
+  useEffect(() => {
+    const refresh = () => { void loadClasses(); };
+    window.addEventListener(CLASS_LIST_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(CLASS_LIST_CHANGED_EVENT, refresh);
+  }, [loadClasses]);
   useEffect(() => { void loadStudents(); }, [loadStudents]);
 
   async function createStudents(event: React.FormEvent<HTMLFormElement>) {
@@ -93,15 +123,20 @@ export function StudentManagement() {
 
   if (!client) return null;
 
+  const selectedClass = classes.find((item) => item.id === classId);
+
   return (
     <section className="class-management" id="classes">
       <div className="class-heading">
         <div><div className="eyebrow muted">КАБІНЕТ УЧИТЕЛЯ</div><h2>Мої класи й учні</h2></div>
+        <button type="button" className="primary-button" disabled={!teacherId} onClick={() => { setConfigureClassId(""); setSetupOpen(true); }}>Додати клас</button>
         {classes.length > 0 && <label className="field-label">КЛАС<select value={classId} onChange={(event) => { setClassId(event.target.value); setStudents([]); setCredentials(null); }}>
           {classes.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
         </select></label>}
       </div>
-      {!classes.length ? <p className="class-empty">Після налаштування профілю тут з’явиться ваш клас.</p> : <>
+      {!classes.length ? <p className="class-empty">Створіть клас і вкажіть предмет та рівень, щоб додавати учнів і призначати тести.</p> : <>
+        {selectedClass && !selectedClass.subjects.length && <div className="class-setup-notice"><p>Для класу «{selectedClass.name}» ще не задано предмет і рівень.</p><button type="button" onClick={() => { setConfigureClassId(selectedClass.id); setSetupOpen(true); }}>Налаштувати клас</button></div>}
+        {selectedClass?.subjects.length ? <p className="class-subject-summary">Предмет і рівень класу налаштовано.</p> : null}
         <form className="student-create" onSubmit={createStudents}>
           <label className="field-label">ДОДАТИ УЧНІВ <textarea value={names} onChange={(event) => setNames(event.target.value)} placeholder={"Ім’я та прізвище кожного учня — з нового рядка"} rows={3} /></label>
           <button className="primary-button" disabled={busy || !names.trim()}>{busy ? "Обробляємо…" : "Створити доступи"}</button>
@@ -124,6 +159,19 @@ export function StudentManagement() {
           {!students.length && <p className="class-empty">У цьому класі поки немає учнів.</p>}
         </div>
       </>}
+      {setupOpen && <ClassSetupDialog client={client} teacherId={teacherId} initialClassId={configureClassId} onClose={() => setSetupOpen(false)} onSaved={(result: CreateClassData | SetClassSubjectData) => {
+        setSetupOpen(false);
+        if ("name" in result) {
+          setClassId(result.classId);
+          setMessage(`Клас «${result.name}» створено.`);
+          announceClassListChanged();
+          void loadClasses(result.classId);
+        } else {
+          setMessage("Предмет і рівень класу налаштовано.");
+          announceClassListChanged();
+          void loadClasses(result.classId);
+        }
+      }} />}
     </section>
   );
 }

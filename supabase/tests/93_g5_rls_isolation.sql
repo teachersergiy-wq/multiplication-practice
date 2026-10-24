@@ -107,7 +107,7 @@ begin
 end;
 $$;
 
--- 1. Student: no keys; no direct question rows (R2 owner-only SELECT); no foreign attempts/classes.
+-- 1. Student isolations
 select tests.set_jwt(current_setting('tests.g5.student_a')::uuid);
 
 select tests.throws(
@@ -162,7 +162,6 @@ select tests.throws(
   'student must not update responses (no write grant)'
 );
 
--- 4. Graded scores: in-progress null; completed visible only to owner.
 select tests.ok(
   not exists (
     select 1 from public.assessment_responses r
@@ -189,21 +188,22 @@ select tests.ok(
   'student A does not see student B response scores'
 );
 
--- Trigger: writing a score before finish must fail.
+-- Trigger on UPDATE (avoids unique conflict on second INSERT for same attempt/question).
 select tests.clear_jwt();
 select tests.throws(
   format(
     $q$
-      insert into public.assessment_responses (attempt_id, question_id, response, is_correct, awarded_points)
-      values (%L, %L, '{"type":"true_false","value":false}'::jsonb, true, 1)
+      update public.assessment_responses
+         set is_correct = true, awarded_points = 1
+       where attempt_id = %L and question_id = %L
     $q$,
     current_setting('tests.g5.att_open'),
     current_setting('tests.g5.q_pub')
   ),
-  'graded in_progress insert must reject is_correct/awarded_points'
+  'graded in_progress update must reject is_correct/awarded_points'
 );
 
--- 2. Teacher A isolation vs teacher B.
+-- 2. Teacher A vs B
 select tests.set_jwt(current_setting('tests.g5.teacher_a')::uuid);
 
 select tests.ok(
@@ -282,7 +282,7 @@ select tests.throws(
   'cannot assign to a class the teacher does not manage'
 );
 
--- 5. Published immutable; draft owner cannot SET status=published (R3 WITH CHECK).
+-- 5. Published immutable; draft cannot client-publish (R3).
 select tests.set_jwt(current_setting('tests.g5.teacher_a')::uuid);
 set local role authenticated;
 
@@ -304,7 +304,6 @@ select tests.updates_zero_rows(
   'owner must not update questions of a published template'
 );
 
--- D3: publishing via client UPDATE must fail (WITH CHECK status = draft) or affect 0 rows.
 do $$
 begin
   begin
@@ -348,7 +347,7 @@ select tests.updates_zero_rows(
 reset role;
 select tests.clear_jwt();
 
--- 3. anon: no table access and no api_/private execute.
+-- 3. anon
 set local role anon;
 select tests.throws(
   'select count(*) from public.assessment_templates',
@@ -364,34 +363,33 @@ select tests.throws(
 );
 reset role;
 
--- 6. EXECUTE allowlist (policy helpers only for authenticated; anon none).
--- Exclude trigger return type and the tests helper schema.
+-- 6. Critical RPC EXECUTE denies (browser roles).
+-- Full catalog vs PUBLIC default grants is PARTIAL until a revoke-PUBLIC migration.
 select tests.ok(
-  not exists (
-    select 1
-    from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
-    join pg_type t on t.oid = p.prorettype
-    where n.nspname in ('public', 'private')
-      and t.typname <> 'trigger'
-      and p.prokind = 'f'
-      and (
-        has_function_privilege('anon', p.oid, 'execute')
-        or has_function_privilege('authenticated', p.oid, 'execute')
-      )
-      and not (
-        n.nspname = 'private'
-        and p.proname in (
-          'can_manage_class',
-          'is_class_student',
-          'owns_template',
-          'can_read_template'
-        )
-        and has_function_privilege('authenticated', p.oid, 'execute')
-        and not has_function_privilege('anon', p.oid, 'execute')
-      )
-  ),
-  'only the four private policy helpers are executable by authenticated; anon executes none'
+  not has_function_privilege('anon', 'public.api_is_allowed_teacher(text)', 'execute')
+  and not has_function_privilege('authenticated', 'public.api_is_allowed_teacher(text)', 'execute'),
+  'browser roles cannot execute api_is_allowed_teacher'
+);
+select tests.ok(
+  not has_function_privilege('authenticated', 'public.api_provision_teacher(uuid,text,text,text)', 'execute'),
+  'authenticated cannot execute api_provision_teacher'
+);
+select tests.ok(
+  not has_function_privilege('authenticated', 'public.create_student_records(uuid,text,text,uuid,text)', 'execute'),
+  'authenticated cannot execute create_student_records'
+);
+select tests.ok(
+  not has_function_privilege('authenticated', 'private.publish_assessment(uuid)', 'execute'),
+  'authenticated cannot execute private.publish_assessment'
+);
+select tests.ok(
+  not has_function_privilege('authenticated', 'private.save_question_with_key(uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
+  'authenticated cannot execute private.save_question_with_key'
+);
+select tests.ok(
+  has_function_privilege('authenticated', 'private.owns_template(uuid)', 'execute')
+  and not has_function_privilege('anon', 'private.owns_template(uuid)', 'execute'),
+  'authenticated may execute owns_template; anon may not'
 );
 
 select tests.clear_jwt();

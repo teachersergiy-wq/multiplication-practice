@@ -1,5 +1,6 @@
 -- G5 (issue #43): RLS and role isolation. Tests only. No migration.
 -- After R2, assessment_questions SELECT is owner-only; students get items via Edge Functions.
+-- After G6, enforce_response_scores_null_until_finish raises only on INSERT (UPDATE needed for finalize).
 
 begin;
 
@@ -18,6 +19,7 @@ declare
   tpl_b uuid := 'e5e5e5e5-e5e5-e5e5-e5e5-e5e5e5e5e503';
   tpl_grade uuid := 'e5e5e5e5-e5e5-e5e5-e5e5-e5e5e5e5e504';
   q_pub uuid := 'f5f5f5f5-f5f5-f5f5-f5f5-f5f5f5f5f501';
+  q_pub2 uuid := 'f5f5f5f5-f5f5-f5f5-f5f5-f5f5f5f5f503';
   q_b uuid := 'f5f5f5f5-f5f5-f5f5-f5f5-f5f5f5f5f502';
   asg_a uuid := '11111111-1111-1111-1111-111111111501';
   att_open uuid := '22222222-2222-2222-2222-222222222501';
@@ -59,11 +61,13 @@ begin
   insert into public.assessment_questions (id, template_id, position, question_type, prompt, choices, points)
   values
     (q_pub, tpl_pub, 1, 'true_false', '{"text":"2*2=4"}'::jsonb, '[]'::jsonb, 1),
+    (q_pub2, tpl_pub, 2, 'true_false', '{"text":"3*3=9"}'::jsonb, '[]'::jsonb, 1),
     (q_b, tpl_b, 1, 'true_false', '{"text":"secret"}'::jsonb, '[]'::jsonb, 1);
 
   insert into private.assessment_answer_keys (question_id, answer_key, checker_version)
   values
     (q_pub, '{"type":"true_false","value":true}'::jsonb, 1),
+    (q_pub2, '{"type":"true_false","value":true}'::jsonb, 1),
     (q_b, '{"type":"true_false","value":false}'::jsonb, 1);
 
   insert into public.assessment_assignments (id, template_id, class_id, assigned_by)
@@ -99,6 +103,7 @@ begin
   perform set_config('tests.g5.tpl_b', tpl_b::text, true);
   perform set_config('tests.g5.tpl_grade', tpl_grade::text, true);
   perform set_config('tests.g5.q_pub', q_pub::text, true);
+  perform set_config('tests.g5.q_pub2', q_pub2::text, true);
   perform set_config('tests.g5.q_b', q_b::text, true);
   perform set_config('tests.g5.subject', subject_id::text, true);
   perform set_config('tests.g5.att_open', att_open::text, true);
@@ -107,7 +112,6 @@ begin
 end;
 $$;
 
--- 1. Student isolations
 select tests.set_jwt(current_setting('tests.g5.student_a')::uuid);
 
 select tests.throws(
@@ -188,22 +192,20 @@ select tests.ok(
   'student A does not see student B response scores'
 );
 
--- Trigger on UPDATE (avoids unique conflict on second INSERT for same attempt/question).
+-- Trigger raises on INSERT with scores while graded+in_progress (UPDATE allowed for finalize).
 select tests.clear_jwt();
 select tests.throws(
   format(
     $q$
-      update public.assessment_responses
-         set is_correct = true, awarded_points = 1
-       where attempt_id = %L and question_id = %L
+      insert into public.assessment_responses (attempt_id, question_id, response, is_correct, awarded_points)
+      values (%L, %L, '{"type":"true_false","value":true}'::jsonb, true, 1)
     $q$,
     current_setting('tests.g5.att_open'),
-    current_setting('tests.g5.q_pub')
+    current_setting('tests.g5.q_pub2')
   ),
-  'graded in_progress update must reject is_correct/awarded_points'
+  'graded in_progress INSERT must reject is_correct/awarded_points'
 );
 
--- 2. Teacher A vs B
 select tests.set_jwt(current_setting('tests.g5.teacher_a')::uuid);
 
 select tests.ok(
@@ -282,7 +284,6 @@ select tests.throws(
   'cannot assign to a class the teacher does not manage'
 );
 
--- 5. Published immutable; draft cannot client-publish (R3).
 select tests.set_jwt(current_setting('tests.g5.teacher_a')::uuid);
 set local role authenticated;
 
@@ -347,7 +348,6 @@ select tests.updates_zero_rows(
 reset role;
 select tests.clear_jwt();
 
--- 3. anon
 set local role anon;
 select tests.throws(
   'select count(*) from public.assessment_templates',
@@ -363,8 +363,6 @@ select tests.throws(
 );
 reset role;
 
--- 6. Critical RPC EXECUTE denies (browser roles).
--- Full catalog vs PUBLIC default grants is PARTIAL until a revoke-PUBLIC migration.
 select tests.ok(
   not has_function_privilege('anon', 'public.api_is_allowed_teacher(text)', 'execute')
   and not has_function_privilege('authenticated', 'public.api_is_allowed_teacher(text)', 'execute'),

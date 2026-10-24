@@ -434,8 +434,9 @@ export interface StoredPrompt {
 export type StoredChoices = PublicChoice[] | PublicMatchItem[];
 
 /**
- * private.assessment_answer_keys.answer_key with checker_version = 1
- * (all-or-nothing scoring). Partial credit would be checker_version 2.
+ * private.assessment_answer_keys.answer_key. The key shape is the same for
+ * checker_version 1 (all-or-nothing) and 2 (partial credit for multiple_choice,
+ * ordering and matching; rules in docs/API_CONTRACT.md, section 5).
  */
 export type StoredAnswerKeyV1 =
   | { type: "true_false"; value: boolean }

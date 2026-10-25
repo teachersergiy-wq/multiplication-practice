@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CreateClassData, SetClassSubjectData } from "../../contracts/api";
 import { apiErrorMessage, invokeFunction } from "../lib/function-api";
 import type { supabase } from "../lib/supabase";
@@ -19,6 +19,9 @@ interface Props {
 }
 
 export function ClassSetupDialog({ client, teacherId, initialClassId = "", initialSubjectId = "", initialGradeLevel = 1, onClose, onSaved }: Props) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const busyRef = useRef(false);
+  const onCloseRef = useRef(onClose);
   const [mode, setMode] = useState<"create" | "configure">(initialClassId ? "configure" : "create");
   const [classes, setClasses] = useState<OwnedClass[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
@@ -29,6 +32,45 @@ export function ClassSetupDialog({ client, teacherId, initialClassId = "", initi
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  busyRef.current = busy;
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    dialog?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        if (!busyRef.current) onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -63,7 +105,7 @@ export function ClassSetupDialog({ client, teacherId, initialClassId = "", initi
     setError("");
     const values = validateClassInput(mode === "create" ? className : selectedClassName, gradeLevel, subjectId);
     if (!values.ok) {
-      setError(values.reason === "name" ? "Назва класу має містити від 1 до 80 символів." : values.reason === "grade" ? "Оберіть рівень від 1 до 12." : "Оберіть предмет.");
+      setError(values.reason === "name" ? "Назва класу має містити від 1 до 80 символів." : values.reason === "grade" ? "Оберіть рівень від 1 до 11." : "Оберіть предмет.");
       return;
     }
     if (mode === "configure" && !classId) { setError("Оберіть клас для налаштування."); return; }
@@ -82,7 +124,7 @@ export function ClassSetupDialog({ client, teacherId, initialClassId = "", initi
   }
 
   return <div className="class-setup-backdrop">
-    <section className="class-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="class-setup-title">
+    <section ref={dialogRef} className="class-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="class-setup-title" tabIndex={-1}>
       <div className="class-setup-heading"><div><div className="eyebrow muted">КЛАСИ</div><h3 id="class-setup-title">{mode === "create" ? "Додати клас" : "Налаштувати клас"}</h3></div><button type="button" className="class-setup-close" aria-label="Закрити" onClick={onClose}>×</button></div>
       <div className="class-setup-mode" role="group" aria-label="Дія з класом">
         <button type="button" className={mode === "create" ? "selected" : ""} onClick={() => { setMode("create"); setError(""); }}>Новий клас</button>

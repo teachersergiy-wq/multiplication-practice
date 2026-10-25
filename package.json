@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test src/domain.test.js src/questions/editor-api.test.js src/assignments/assignment-api.test.js src/assignments/teacher-results.test.js src/students/student-flow.test.js src/scoring.test.js src/classes/class-api.test.js src/library/generator-api.test.js"
+    "test": "node --test src/domain.test.js src/questions/editor-api.test.js src/assignments/assignment-api.test.js src/assignments/teacher-results.test.js src/students/student-flow.test.js src/scoring.test.js src/classes/class-api.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.58.0",

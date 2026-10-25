@@ -20,9 +20,9 @@ select tests.ok(
 
 do $$
 declare
-  tid uuid := 'g9g9g9g9-g9g9-g9g9-g9g9-g9g9g9g9g901';
-  other uuid := 'g9g9g9g9-g9g9-g9g9-g9g9-g9g9g9g9g902';
-  sid uuid := 'g9g9g9g9-g9g9-g9g9-g9g9-g9g9g9g9g903';
+  tid uuid := 'a9a9a9a9-a9a9-a9a9-a9a9-a9a9a9a9a901';
+  other uuid := 'a9a9a9a9-a9a9-a9a9-a9a9-a9a9a9a9a902';
+  sid uuid := 'a9a9a9a9-a9a9-a9a9-a9a9-a9a9a9a9a903';
   subj uuid;
   res jsonb;
   tpl uuid;

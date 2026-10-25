@@ -4,6 +4,7 @@ import type { AssessmentDraft, Subject } from "../domain";
 import { assessmentDraftStorageKey, migrateAssessmentDrafts } from "../domain";
 import type { supabase } from "../lib/supabase";
 import { AssignmentManager } from "../assignments/AssignmentManager";
+import { MultiplicationGeneratorDialog } from "./MultiplicationGeneratorDialog";
 
 type Client = NonNullable<typeof supabase>;
 type SubjectRow = { id: string; code: string; name: string; icon: string };
@@ -47,6 +48,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [managingTemplate, setManagingTemplate] = useState<TemplateRow | null>(null);
+  const [generatorOpen, setGeneratorOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -176,12 +178,15 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
     return { name: row?.name ?? "Предмет", icon: ui?.icon ?? row?.icon ?? "✳", tone: ui?.tone ?? "mint" };
   }
 
+  const mathematicsSubject = subjectRows.find((item) => item.code === "mathematics");
+
   return <section className="template-library" aria-labelledby="template-library-heading">
     <div className="template-library-heading"><div><div className="eyebrow muted">ВАША БІБЛІОТЕКА</div><h2 id="template-library-heading">Тести та заготовки</h2></div><label className="grade-select">КЛАС <select aria-label="Фільтр за класом" value={grade} onChange={(event) => onGradeChange(Number(event.target.value))}>{Array.from({ length: 11 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value} клас</option>)}</select></label></div>
     <form className="template-create" onSubmit={createDraft}>
       <label className="field-label">НАЗВА НОВОЇ ЧЕРНЕТКИ<input value={newTitle} maxLength={180} onChange={(event) => setNewTitle(event.target.value)} placeholder="Наприклад, Таблиця множення" /></label>
       <button className="primary-button" type="submit" disabled={busy}>{busy ? "Зберігаємо…" : "＋ Створити чернетку"}</button>
     </form>
+    {mathematicsSubject && subjectCode === "mathematics" && <button className="multiplication-generator-trigger" type="button" onClick={() => setGeneratorOpen(true)} disabled={busy}>✦ Згенерувати тест з множення</button>}
     <div className="template-actions"><button className="text-button" type="button" onClick={() => void importLocalDrafts()} disabled={busy}>Імпортувати локальні чернетки</button><button className="text-button" type="button" onClick={() => void reload()} disabled={loading || busy}>Оновити список</button></div>
     <p className="template-clone-note">Клонування опублікованих тестів поки недоступне — серверна функція ще не підключена.</p>
     {error && <p className="template-error" role="alert">{error}</p>}{notice && <p className="template-notice" role="status">{notice}</p>}
@@ -209,6 +214,19 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
         setManagingTemplate((current) => current?.id === managingTemplate.id ? { ...current, status: "published" } : current);
         void reload();
         onPublished();
+      }}
+    />}
+    {generatorOpen && mathematicsSubject && <MultiplicationGeneratorDialog
+      client={client}
+      subject={mathematicsSubject}
+      grade={grade}
+      onClose={() => setGeneratorOpen(false)}
+      onCreated={async (data, requestedGrade) => {
+        setGeneratorOpen(false);
+        onGradeChange(requestedGrade);
+        setNotice(data.configGradeLevel !== requestedGrade ? `Чернетку створено. Використано налаштування ${data.configGradeLevel} класу.` : "Чернетку тесту з множення створено.");
+        await reload();
+        onOpen({ id: data.templateId, title: data.title });
       }}
     />}
   </section>;

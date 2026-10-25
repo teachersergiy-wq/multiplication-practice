@@ -370,6 +370,48 @@ export interface SetClassSubjectData {
 }
 
 /* ------------------------------------------------------------------ */
+/* Multiplication generator (teacher)                                  */
+/* ------------------------------------------------------------------ */
+
+/** Public row of multiplication_level_configs (read by teachers under RLS). */
+export interface MultiplicationLevelConfig {
+  gradeLevel: number;
+  /** 1-5. */
+  levelNumber: number;
+  questionCount: number;
+  secondsPerQuestion: number;
+  maxErrors: number;
+  passPercent: number;
+  minFactor: number;
+  maxFactor: number;
+}
+
+/**
+ * Creates a new `draft` template of numeric questions "a × b = ?" from the
+ * shared level config. The teacher can edit the draft and must publish it
+ * through `publish-assessment` (decision D3).
+ */
+export interface GenerateMultiplicationTestRequest {
+  /** Active subject with code `mathematics`. */
+  subjectId: Uuid;
+  /** Integer 1-11 (decision D8); selects the config row. */
+  gradeLevel: number;
+  /** Integer 1-5. */
+  levelNumber: number;
+  mode: AssessmentMode;
+  /** Optional, 1-120 characters; default "Множення: рівень N". */
+  title?: string;
+}
+export interface GenerateMultiplicationTestData {
+  templateId: Uuid;
+  title: string;
+  questionCount: number;
+  /** Grade of the config row actually used (may be lower than the requested grade). */
+  configGradeLevel: number;
+  settings: AssessmentSettings;
+}
+
+/* ------------------------------------------------------------------ */
 /* Attempts (student only)                                             */
 /* ------------------------------------------------------------------ */
 
@@ -467,6 +509,7 @@ export interface FunctionContracts {
   "clone-assessment": { role: "teacher"; request: CloneAssessmentRequest; data: CloneAssessmentData };
   "create-class": { role: "teacher"; request: CreateClassRequest; data: CreateClassData };
   "set-class-subject": { role: "teacher"; request: SetClassSubjectRequest; data: SetClassSubjectData };
+  "generate-multiplication-test": { role: "teacher"; request: GenerateMultiplicationTestRequest; data: GenerateMultiplicationTestData };
   "start-attempt": { role: "student"; request: StartAttemptRequest; data: StartAttemptData };
   "submit-answer": { role: "student"; request: SubmitAnswerRequest; data: SubmitAnswerData };
   "finish-attempt": { role: "student"; request: FinishAttemptRequest; data: FinishAttemptData };

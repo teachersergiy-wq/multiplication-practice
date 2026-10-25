@@ -56,7 +56,7 @@ export function ClassSetupDialog({ client, teacherId, initialClassId = "", initi
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog || !dialog.contains(document.activeElement))) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {

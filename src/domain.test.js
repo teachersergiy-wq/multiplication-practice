@@ -3,6 +3,8 @@ import test from "node:test";
 import { assessmentDraftStorageKey, isAssessmentDraftCollection, migrateAssessmentDrafts, questionTypeLabels } from "./domain.ts";
 import { apiErrorMessage, parseApiResult } from "./lib/function-api.ts";
 import { validateAuthoredQuestion } from "./question-validation.ts";
+// Keep the library generator's contract tests in the existing npm test run.
+import "./library/generator-api.test.js";
 
 test("migrates legacy subject ids while retaining draft data", () => {
   const oldDrafts = [

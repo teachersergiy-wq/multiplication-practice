@@ -167,8 +167,8 @@ begin
   select x.a, x.b, random()
   from (
     select least(i, j) as a, greatest(i, j) as b
-    from generate_series(v_cfg.min_factor, v_cfg.max_factor) as i
-    cross join generate_series(v_cfg.min_factor, v_cfg.max_factor) as j
+    from generate_series(v_cfg.min_factor::integer, v_cfg.max_factor::integer) as i
+    cross join generate_series(v_cfg.min_factor::integer, v_cfg.max_factor::integer) as j
     group by 1, 2
   ) x;
 

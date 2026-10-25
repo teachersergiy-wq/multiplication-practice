@@ -5,6 +5,7 @@ import { questionTypeLabels } from "../domain";
 import { isAuthoredQuestion, validateAuthoredQuestion } from "../question-validation";
 import { supabase } from "../lib/supabase";
 import { apiErrorMessage, invokeFunction } from "../lib/function-api";
+import { partialCreditHint } from "../scoring.js";
 import { deleteQuestionRequest, getDraftRequest, reorderQuestionsRequest, upsertQuestionRequest } from "./editor-api.js";
 
 const questionTypes: QuestionType[] = ["true_false", "single_choice", "multiple_choice", "ordering", "matching", "numeric", "short_answer"];
@@ -202,6 +203,7 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
     return <article className="question-preview" key={previewId}>
       <span className="question-preview-type">{questionTypeLabels[question.type]} · {question.points} б.</span>
       <strong>{question.promptText}</strong>
+      {partialCreditHint(question.type) && <p className="partial-credit-hint">{partialCreditHint(question.type)}</p>}
       {question.type === "true_false" && <p>Так &nbsp; / &nbsp; Ні</p>}
       {(question.type === "single_choice" || question.type === "multiple_choice") && <ol>{question.options.map((option, index) => <li key={`${previewId}-choice-${index}`}>{option}</li>)}</ol>}
       {question.type === "ordering" && <ol>{[...question.itemsInCorrectOrder].reverse().map((item, index) => <li key={`${previewId}-order-${index}`}>{item}</li>)}</ol>}

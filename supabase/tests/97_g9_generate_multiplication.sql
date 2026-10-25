@@ -33,7 +33,6 @@ declare
   bad int;
   has_sq11 boolean;
   has_sq12 boolean;
-  texts text[];
 begin
   perform tests.ensure_auth_user(tid, 'g9-teacher@test.local');
   perform tests.ensure_auth_user(other, 'g9-other@test.local');
@@ -48,7 +47,6 @@ begin
 
   select id into subj from public.subjects where code = 'mathematics' limit 1;
 
-  -- Config rows present for grade 3 and 5–9 level 1
   perform tests.ok(
     (select count(*) from public.multiplication_level_configs c
      where c.subject_id = subj and c.grade_level = 3 and c.level_number = 5
@@ -61,7 +59,6 @@ begin
     'grades 5–9 have 5 levels each'
   );
 
-  -- Generate grade 3 level 1
   res := public.api_generate_multiplication_test(
     tid, subj, 3, 1, 'practice'::public.assessment_mode, null
   );
@@ -71,8 +68,6 @@ begin
   perform tests.ok((res->'settings'->>'passPercent')::int = 70, 'passPercent 70');
   perform tests.ok((res->'settings'->>'maxErrors')::int = 3, 'maxErrors 3');
 
-  select status, grade_level into cnt /* dummy */
-  from public.assessment_templates where id = tpl;
   perform tests.ok(
     exists (
       select 1 from public.assessment_templates t
@@ -85,7 +80,6 @@ begin
   select count(*) into cnt from public.assessment_questions where template_id = tpl;
   perform tests.ok(cnt = 10, '10 questions inserted');
 
-  -- All numeric keys product of factors in range; no duplicate unordered pairs
   select min_factor, max_factor into v_min, v_max
   from public.multiplication_level_configs
   where subject_id = subj and grade_level = 3 and level_number = 1;
@@ -120,7 +114,6 @@ begin
   ) d;
   perform tests.ok(n_pairs = 10, '10 unique unordered pairs in range');
 
-  -- Grade 3 level 5: 28 pairs in [3,9] + squares 11² 12² → 30
   res := public.api_generate_multiplication_test(
     tid, subj, 3, 5, 'graded'::public.assessment_mode, 'G9 L5'
   );
@@ -134,13 +127,11 @@ begin
   from public.assessment_questions where template_id = tpl;
   perform tests.ok(has_sq11 and has_sq12, 'includes 11×11 and 12×12');
 
-  -- Fallback: grade 4 uses grade 3 config
   res := public.api_generate_multiplication_test(
     tid, subj, 4, 1, 'practice'::public.assessment_mode, null
   );
   perform tests.ok((res->>'configGradeLevel')::int = 3, 'grade 4 falls back to 3');
 
-  -- Grade 1 has no lower config → not_found
   begin
     perform public.api_generate_multiplication_test(
       tid, subj, 1, 1, 'practice'::public.assessment_mode, null
@@ -150,7 +141,6 @@ begin
     perform tests.ok(sqlerrm ilike '%not_found%', 'grade 1 not_found');
   end;
 
-  -- Student cannot call (role check)
   begin
     perform public.api_generate_multiplication_test(
       sid, subj, 3, 1, 'practice'::public.assessment_mode, null

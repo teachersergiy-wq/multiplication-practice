@@ -295,7 +295,6 @@ select tests.updates_zero_rows(
   'owner must not update a published template'
 );
 
--- R2 revoked UPDATE on assessment_questions for authenticated → permission denied (not silent 0 rows).
 select tests.throws(
   format(
     'update public.assessment_questions set prompt = %L::jsonb where id = %L',
@@ -380,8 +379,13 @@ select tests.ok(
   not has_function_privilege('authenticated', 'private.publish_assessment(uuid)', 'execute'),
   'authenticated cannot execute private.publish_assessment'
 );
+-- G3b signature includes p_teacher_id (10 args).
 select tests.ok(
-  not has_function_privilege('authenticated', 'private.save_question_with_key(uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)', 'execute'),
+  not has_function_privilege(
+    'authenticated',
+    'private.save_question_with_key(uuid,uuid,uuid,integer,public.question_type,jsonb,jsonb,numeric,integer,jsonb)',
+    'execute'
+  ),
   'authenticated cannot execute private.save_question_with_key'
 );
 select tests.ok(

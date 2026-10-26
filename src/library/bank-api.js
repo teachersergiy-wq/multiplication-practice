@@ -58,3 +58,11 @@ export function bankErrorMessage(code) {
   if (code === "forbidden") return "Немає доступу до цього тесту.";
   return null;
 }
+
+export function generateBank(request, callFunction) {
+  return callFunction("generate-multiplication-bank", request);
+}
+
+export function bulkUpdateBank(request, callFunction) {
+  return callFunction("bulk-update-questions", request);
+}

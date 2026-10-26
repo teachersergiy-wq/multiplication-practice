@@ -72,7 +72,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
     setLoading(true);
     setError("");
     try {
-      const [teacherClasses, matchingSubjects, assignmentResult, subjectResult] = await Promise.all([
+      const [teacherClasses, matchingSubjects, assignmentResult, subjectResult, poolQuestionsResult] = await Promise.all([
         client.from("class_teachers").select("class_id, classes(id,name)").eq("teacher_id", teacherId),
         client.from("class_subjects").select("class_id").eq("subject_id", template.subject_id).eq("grade_level", template.grade_level),
         client.from("assessment_assignments").select("id,class_id,opens_at,closes_at,allow_retries,created_at,classes(id,name)").eq("template_id", template.id).order("created_at", { ascending: false }),
@@ -90,7 +90,10 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
         const related = Array.isArray(row.classes) ? row.classes[0] : row.classes;
         return related && subjectClassIds.has(row.class_id) ? [related] : [];
       });
-      const poolQuestions = (arguments[4]?.data ?? []) as { difficulty: number | null }[];\n      const counts = [0, 0, 0, 0, 0];\n      for (const question of poolQuestions) if (question.difficulty && question.difficulty >= 1 && question.difficulty <= 5) counts[question.difficulty - 1] += 1;\n      setBankByLevel(counts);\n      const savedAssignments = (assignmentResult.data ?? []) as unknown as AssignmentRow[];
+      const poolQuestions = (poolQuestionsResult.data ?? []) as { difficulty: number | null }[];
+      const counts = [0, 0, 0, 0, 0];
+      for (const question of poolQuestions) if (question.difficulty && question.difficulty >= 1 && question.difficulty <= 5) counts[question.difficulty - 1] += 1;
+      setBankByLevel(counts);\n      const savedAssignments = (assignmentResult.data ?? []) as unknown as AssignmentRow[];
       if (subjectResult.data?.name) setSubjectName(subjectResult.data.name);
       const alreadyAssigned = new Set(savedAssignments.map((item) => item.class_id));
       const unassignedClasses = compatibleClasses.filter((item) => !alreadyAssigned.has(item.id));
@@ -102,7 +105,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
     } finally {
       setLoading(false);
     }
-  }, [client, teacherId, template.grade_level, template.id, template.subject_id]);
+  }, [client, teacherId, template.grade_level, template.id, template.subject_id, template.settings]);
 
   useEffect(() => { void loadAssignments(); }, [loadAssignments]);
   useEffect(() => {
@@ -112,6 +115,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
   }, [loadAssignments]);
 
   async function publish() {
+    if (!poolReady) { setError(poolShortageMessage); return; }
     if (editorHasUnsavedChanges) {
       setError("Спочатку закрийте це вікно, збережіть або скасуйте незбережені зміни в редакторі, а потім опублікуйте тест.");
       return;
@@ -139,7 +143,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
     if (!result.ok) {
       if ("reason" in result) { setError(mutationMessage(result.reason)); return; }
       if (result.error.code === "incomplete_assessment") {
-        setError("Тест не готовий до публікації. Перевірте, що в кожному запитанні задано правильну відповідь, і повторіть спробу.");
+        setError(template.settings?.pool ? poolShortageMessage : "Тест не готовий до публікації. Перевірте, що в кожному запитанні задано правильну відповідь, і повторіть спробу.");
       } else if (result.error.code === "conflict") {
         setError("Стан тесту змінився. Оновіть бібліотеку й перевірте його ще раз.");
       } else {
@@ -209,6 +213,12 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
   const assignedClassIds = new Set(assignments.map((item) => item.class_id));
   const availableClasses = classes.filter((item) => !assignedClassIds.has(item.id));
   const classAvailability = assignmentClassAvailability(classes.length, availableClasses.length);
+  const requiredLevels = template.settings?.pool?.levelCounts;
+  const poolShortages = requiredLevels?.map((required, index) => Math.max(0, required - (bankByLevel[index] ?? 0))) ?? [];
+  const poolReady = !poolShortages.some((missing) => missing > 0);
+  const poolShortageMessage = poolShortages.some((missing) => missing > 0)
+    ? `Недостатньо запитань у банку: ${poolShortages.map((missing, index) => missing ? `рівень ${index + 1} — ще ${missing}` : null).filter(Boolean).join("; ")}.`
+    : "Перевірте банк запитань і повторіть спробу.";
 
   return <section className="assignment-panel" aria-labelledby="assignment-panel-title">
     <div className="assignment-panel-heading">
@@ -225,7 +235,8 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
         <label><input type="radio" name={`mode-${template.id}`} value="graded" checked={mode === "graded"} disabled={busy} onChange={() => setMode("graded")} /><span><strong>Оцінювання</strong><small>Правильність і результат відкриваються після завершення тесту.</small></span></label>
       </fieldset>
       {editorHasUnsavedChanges && <p className="assignment-help" role="status">Є незбережені зміни в редакторі. Закрийте це вікно, збережіть або скасуйте їх перед публікацією.</p>}
-      <button className="primary-button" type="button" disabled={busy || editorHasUnsavedChanges} onClick={() => void publish()}>{busy ? "Публікуємо…" : "Опублікувати тест"}</button>
+      {!poolReady && <p className="assignment-help" role="alert">{poolShortageMessage}</p>}
+      <button className="primary-button" type="button" disabled={busy || editorHasUnsavedChanges || !poolReady} onClick={() => void publish()}>{busy ? "Публікуємо…" : "Опублікувати тест"}</button>
     </div> : <>
       <p className="assignment-mode-summary">Режим: <strong>{mode === "practice" ? "Тренування" : "Оцінювання"}</strong> · {mode === "practice" ? "підказка після кожної відповіді" : "результат після завершення"}</p>
       <form className="assignment-create" onSubmit={(event) => void assign(event)}>

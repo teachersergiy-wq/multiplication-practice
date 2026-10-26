@@ -6,7 +6,6 @@ project_id = "multiplication-practice"
 [api]
 enabled = true
 port = 54321
-# Do not expose private schema via PostgREST (review #6).
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
@@ -92,4 +91,16 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.generate-multiplication-test]
+verify_jwt = true
+
+[functions.add-teacher]
+verify_jwt = true
+
+[functions.list-teachers]
+verify_jwt = true
+
+[functions.reset-teacher-password]
+verify_jwt = true
+
+[functions.set-teacher-active]
 verify_jwt = true

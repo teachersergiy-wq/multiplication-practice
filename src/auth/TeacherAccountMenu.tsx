@@ -126,10 +126,16 @@ export function TeacherAccountMenu({ client, identity }: { client: Client; ident
       return;
     }
     setBusy(true); setPasswordMessage("");
-    const { error: updateError } = await client.auth.updateUser({ password: newPassword });
+    let updateFailed = false;
+    try {
+      const { error: updateError } = await client.auth.updateUser({ password: newPassword });
+      updateFailed = Boolean(updateError);
+    } catch {
+      updateFailed = true;
+    }
     setBusy(false);
     setNewPassword(""); setConfirmPassword("");
-    if (updateError) {
+    if (updateFailed) {
       setPasswordMessage("Не вдалося змінити пароль. Перевірте вимоги до пароля й з’єднання.");
       return;
     }
@@ -147,7 +153,7 @@ export function TeacherAccountMenu({ client, identity }: { client: Client; ident
   }
 
   return <div className="teacher-account-menu">
-    <button className="profile-button" aria-label={`Профіль ${identity.displayName}`} aria-expanded={menuOpen} onClick={() => { setMenuOpen((open) => !open); setView("menu"); }}>
+    <button className="profile-button" aria-label={`Профіль ${identity.displayName}`} aria-expanded={menuOpen} onClick={() => { if (menuOpen) closeTemporaryPassword(); setMenuOpen((open) => !open); setView("menu"); }}>
       <span>{identity.displayName.slice(0, 1).toLocaleUpperCase("uk-UA")}</span><span className="profile-name">{identity.displayName}</span><span aria-hidden="true">⌄</span>
     </button>
     {menuOpen && <div className="teacher-profile-popover">
@@ -155,7 +161,7 @@ export function TeacherAccountMenu({ client, identity }: { client: Client; ident
         <strong>{identity.displayName}</strong><small>{identity.email}</small>
         <button type="button" onClick={() => { setView("password"); setPasswordMessage(""); }}>Змінити пароль</button>
         <p>Якщо ви отримали тимчасовий пароль, змініть його після першого входу.</p>
-        {adminAccess !== false && <button type="button" onClick={() => { setView("teachers"); setError(""); void loadTeachers(); }}>Вчителі</button>}
+        {adminAccess === true && <button type="button" onClick={() => { setView("teachers"); setError(""); void loadTeachers(); }}>Вчителі</button>}
         <button type="button" onClick={() => void identity.signOut()}>Вийти</button>
       </> : view === "password" ? <>
         <div className="teacher-admin-heading"><div><small>ПРОФІЛЬ</small><h2>Змінити пароль</h2></div><button type="button" className="teacher-admin-close" aria-label="Назад до профілю" onClick={() => setView("menu")}>×</button></div>

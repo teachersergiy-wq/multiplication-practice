@@ -2,21 +2,61 @@ function relationOne(value) {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
+function questionPrompt(prompt) {
+  return prompt && typeof prompt === "object" && typeof prompt.text === "string" ? prompt.text : "Запитання";
+}
+
 export async function loadAssignmentResults(client, { assignmentId, classId, templateId }) {
   const db = client;
-  const [studentsResult, attemptsResult, questionsResult] = await Promise.all([
+  const [studentsResult, attemptsResult] = await Promise.all([
     db.from("class_students").select("student_id, profiles!inner(full_name)").eq("class_id", classId).order("student_id"),
     db.from("assessment_attempts")
       .select("id,student_id,status,started_at,finished_at,score,max_score,passed,elapsed_ms")
       .eq("assignment_id", assignmentId).order("started_at", { ascending: false }),
-    db.from("assessment_questions")
-      .select("id,question_type,prompt,choices,points,position")
-      .eq("template_id", templateId).order("position"),
   ]);
-
-  if (studentsResult.error || attemptsResult.error || questionsResult.error) return { ok: false };
+  if (studentsResult.error || attemptsResult.error) return { ok: false };
 
   const attempts = attemptsResult.data ?? [];
+  const attemptIds = attempts.map((attempt) => attempt.id);
+  let sampleRows = [];
+  if (attemptIds.length) {
+    const sampleResult = await db.from("assessment_attempt_questions")
+      .select("attempt_id,question_id,position")
+      .in("attempt_id", attemptIds)
+      .order("position", { ascending: true });
+    if (sampleResult.error) return { ok: false };
+    sampleRows = sampleResult.data ?? [];
+  }
+
+  const sampleQuestionIds = [...new Set(sampleRows.map((row) => row.question_id))];
+  const hasAttemptWithoutSample = attempts.some((attempt) => !sampleRows.some((row) => row.attempt_id === attempt.id));
+  let questionsResult;
+  if (sampleQuestionIds.length) {
+    questionsResult = await db.from("assessment_questions")
+      .select("id,question_type,prompt,choices,points,position")
+      .in("id", sampleQuestionIds)
+      .order("position", { ascending: true });
+    if (questionsResult.error) return { ok: false };
+  }
+  let templateQuestions = [];
+  if (!sampleQuestionIds.length || hasAttemptWithoutSample) {
+    const fallback = await db.from("assessment_questions")
+      .select("id,question_type,prompt,choices,points,position")
+      .eq("template_id", templateId)
+      .order("position", { ascending: true });
+    if (fallback.error) return { ok: false };
+    templateQuestions = fallback.data ?? [];
+  }
+
+  const questionById = new Map([...(questionsResult?.data ?? []), ...templateQuestions].map((question) => [question.id, question]));
+  const questionsByAttempt = new Map();
+  for (const attempt of attempts) {
+    const ordered = sampleRows.filter((row) => row.attempt_id === attempt.id).sort((left, right) => left.position - right.position);
+    const sample = ordered.length ? ordered.map((row) => questionById.get(row.question_id)).filter(Boolean) : templateQuestions;
+    questionsByAttempt.set(attempt.id, sample);
+  }
+  const questions = [...new Map([...questionsByAttempt.values()].flat().map((question) => [question.id, question])).values()];
+
   const completedIds = attempts.filter((attempt) => attempt.status === "completed").map((attempt) => attempt.id);
   let responses = [];
   if (completedIds.length) {
@@ -31,7 +71,7 @@ export async function loadAssignmentResults(client, { assignmentId, classId, tem
     const profile = relationOne(row.profiles);
     return { id: row.student_id, name: profile?.full_name ?? "Учень" };
   });
-  return { ok: true, data: { students, attempts, questions: questionsResult.data ?? [], responses } };
+  return { ok: true, data: { students, attempts, questions, questionsByAttempt, responses } };
 }
 
 function newestFirst(left, right) {
@@ -77,17 +117,19 @@ export function summarizeAssignmentResults(data) {
 
   const responseByAttemptQuestion = new Map(data.responses.map((response) => [`${response.attempt_id}:${response.question_id}`, response]));
   const errorCounts = new Map();
+  const questionById = new Map(data.questions.map((question) => [question.id, question]));
   for (const attempt of latestCompletedByStudent) {
-    for (const question of data.questions) {
+    const attemptQuestions = data.questionsByAttempt?.get(attempt.id) ?? data.questions;
+    for (const question of attemptQuestions) {
       const response = responseByAttemptQuestion.get(`${attempt.id}:${question.id}`);
       if (!response || response.is_correct === false) {
-        errorCounts.set(question.id, (errorCounts.get(question.id) ?? 0) + 1);
+        const current = errorCounts.get(question.id) ?? { question, count: 0 };
+        current.count += 1;
+        errorCounts.set(question.id, current);
       }
     }
   }
-  const mostCommonErrors = data.questions
-    .filter((question) => (errorCounts.get(question.id) ?? 0) > 0)
-    .map((question) => ({ question, count: errorCounts.get(question.id) }))
+  const mostCommonErrors = [...errorCounts.values()]
     .sort((left, right) => right.count - left.count || left.question.position - right.question.position);
 
   return {
@@ -96,6 +138,8 @@ export function summarizeAssignmentResults(data) {
     averagePercent,
     mostCommonErrors,
     responsesByAttempt,
+    questionsByAttempt: data.questionsByAttempt ?? new Map(),
+    questionById,
   };
 }
 
@@ -119,7 +163,7 @@ export function formatStudentAnswer(question, response) {
 }
 
 export function promptText(prompt) {
-  return prompt && typeof prompt === "object" && typeof prompt.text === "string" ? prompt.text : "Запитання";
+  return questionPrompt(prompt);
 }
 
 export function formatElapsed(elapsedMs) {

@@ -2,6 +2,14 @@ export function buildAddTeacherRequest({ email, fullName }) {
   return { email: String(email ?? "").trim().toLowerCase(), fullName: String(fullName ?? "").trim() };
 }
 
+export function buildResetTeacherPasswordRequest(userId) {
+  return { userId };
+}
+
+export function buildSetTeacherActiveRequest(userId, active) {
+  return { userId, active: Boolean(active) };
+}
+
 export function teacherAdminErrorMessage(code) {
   if (code === "invalid_request") return "Перевірте електронну пошту та ПІБ.";
   if (code === "forbidden") return "У вас немає прав адміністратора для цієї дії.";

@@ -1,11 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAddTeacherRequest, createTemporaryPasswordSlot, teacherAdminErrorMessage } from "./teacher-admin.js";
+import { buildAddTeacherRequest, buildResetTeacherPasswordRequest, buildSetTeacherActiveRequest, createTemporaryPasswordSlot, teacherAdminErrorMessage } from "./teacher-admin.js";
 
 test("add teacher request trims the name and normalizes email", () => {
   assert.deepEqual(buildAddTeacherRequest({ email: "  TEACHER@SCHOOL.EDU ", fullName: "  Олена Приклад  " }), {
     email: "teacher@school.edu", fullName: "Олена Приклад",
   });
+});
+
+test("reset and account status requests match the API contract", () => {
+  assert.deepEqual(buildResetTeacherPasswordRequest("teacher-id"), { userId: "teacher-id" });
+  assert.deepEqual(buildSetTeacherActiveRequest("teacher-id", false), { userId: "teacher-id", active: false });
 });
 
 test("admin API errors have Ukrainian messages", () => {

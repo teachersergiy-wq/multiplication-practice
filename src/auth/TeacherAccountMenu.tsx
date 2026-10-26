@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { FunctionContracts } from "../../contracts/api";
 import type { supabase } from "../lib/supabase";
 import { apiErrorMessage, invokeFunction } from "../lib/function-api";
-import { buildAddTeacherRequest, createTemporaryPasswordSlot, teacherAdminErrorMessage } from "./teacher-admin.js";
+import { buildAddTeacherRequest, buildResetTeacherPasswordRequest, buildSetTeacherActiveRequest, createTemporaryPasswordSlot, teacherAdminErrorMessage } from "./teacher-admin.js";
 
 type Client = NonNullable<typeof supabase>;
 type Teacher = FunctionContracts["list-teachers"]["data"]["teachers"][number];
@@ -93,7 +93,7 @@ export function TeacherAccountMenu({ client, identity }: { client: Client; ident
     if (busy || teacher.isAdmin || teacher.userId === identity.userId) return;
     if (!window.confirm(`Створити новий тимчасовий пароль для ${teacher.email}?`)) return;
     setBusy(true); setError(""); setNotice("");
-    const result = await invokeFunction(client, "reset-teacher-password", { userId: teacher.userId });
+    const result = await invokeFunction(client, "reset-teacher-password", buildResetTeacherPasswordRequest(teacher.userId));
     setBusy(false);
     if (!result.ok) {
       setError(teacherAdminErrorMessage(result.error.code) ?? apiErrorMessage(result.error.code));
@@ -108,7 +108,7 @@ export function TeacherAccountMenu({ client, identity }: { client: Client; ident
     const action = active ? "увімкнути" : "вимкнути";
     if (!window.confirm(`Ви справді хочете ${action} обліковий запис ${teacher.email}?`)) return;
     setBusy(true); setError(""); setNotice("");
-    const result = await invokeFunction(client, "set-teacher-active", { userId: teacher.userId, active });
+    const result = await invokeFunction(client, "set-teacher-active", buildSetTeacherActiveRequest(teacher.userId, active));
     setBusy(false);
     if (!result.ok) {
       setError(teacherAdminErrorMessage(result.error.code) ?? apiErrorMessage(result.error.code));

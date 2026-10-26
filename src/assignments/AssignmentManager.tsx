@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AssessmentMode } from "../../contracts/api";
+import type { AssessmentMode, AssessmentSettings } from "../../contracts/api";
 import { apiErrorMessage, invokeFunction } from "../lib/function-api";
 import type { supabase } from "../lib/supabase";
 import { isAuthoredQuestion } from "../question-validation";
@@ -17,6 +17,7 @@ type Template = {
   grade_level: number;
   status: string;
   mode: AssessmentMode;
+  settings?: AssessmentSettings | null;
 };
 type ClassRow = { id: string; name: string };
 type AssignmentRow = {
@@ -65,6 +66,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
   const [notice, setNotice] = useState("");
   const [subjectName, setSubjectName] = useState("обраного предмета");
   const [classSetupOpen, setClassSetupOpen] = useState(false);
+  const [bankByLevel, setBankByLevel] = useState<number[]>([0, 0, 0, 0, 0]);
 
   const loadAssignments = useCallback(async () => {
     setLoading(true);
@@ -75,6 +77,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
         client.from("class_subjects").select("class_id").eq("subject_id", template.subject_id).eq("grade_level", template.grade_level),
         client.from("assessment_assignments").select("id,class_id,opens_at,closes_at,allow_retries,created_at,classes(id,name)").eq("template_id", template.id).order("created_at", { ascending: false }),
         client.from("subjects").select("name").eq("id", template.subject_id).maybeSingle(),
+        template.settings?.pool ? client.from("assessment_questions").select("difficulty").eq("template_id", template.id) : Promise.resolve({ data: [], error: null }),
       ]);
       if (teacherClasses.error || matchingSubjects.error || assignmentResult.error) {
         setError("Не вдалося завантажити класи або призначення. Перевірте з’єднання й доступ та спробуйте ще раз.");
@@ -87,7 +90,7 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
         const related = Array.isArray(row.classes) ? row.classes[0] : row.classes;
         return related && subjectClassIds.has(row.class_id) ? [related] : [];
       });
-      const savedAssignments = (assignmentResult.data ?? []) as unknown as AssignmentRow[];
+      const poolQuestions = (arguments[4]?.data ?? []) as { difficulty: number | null }[];\n      const counts = [0, 0, 0, 0, 0];\n      for (const question of poolQuestions) if (question.difficulty && question.difficulty >= 1 && question.difficulty <= 5) counts[question.difficulty - 1] += 1;\n      setBankByLevel(counts);\n      const savedAssignments = (assignmentResult.data ?? []) as unknown as AssignmentRow[];
       if (subjectResult.data?.name) setSubjectName(subjectResult.data.name);
       const alreadyAssigned = new Set(savedAssignments.map((item) => item.class_id));
       const unassignedClasses = compatibleClasses.filter((item) => !alreadyAssigned.has(item.id));

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_BANK_LEVEL_COUNTS, buildBankRequest, normalizeLevelCounts, summarizeBank,
-  filterBankQuestions, buildBulkUpdateRequest, bankErrorMessage,
+  filterBankQuestions, buildBulkUpdateRequest, bankErrorMessage, generateBank, bulkUpdateBank,
 } from "./bank-api.js";
 
 test("bank request defaults to five/t en/ten/five/zero and omits blank title", () => {
@@ -40,4 +40,15 @@ test("bulk requests match the contract and map server errors in Ukrainian", () =
   });
   assert.deepEqual(buildBulkUpdateRequest("template", ["q1"], { delete: true }), { templateId: "template", questionIds: ["q1"], delete: true });
   assert.equal(bankErrorMessage("incomplete_assessment"), "У банку недостатньо запитань одного або кількох рівнів складності.");
+});
+
+test("bank actions call the matching typed function names with the supplied payload", async () => {
+  const calls = [];
+  const callFunction = async (name, body) => { calls.push({ name, body }); return { ok: true, data: { affected: 1 } }; };
+  const createRequest = buildBankRequest({ subjectId: "subject", gradeLevel: 3, mode: "practice" });
+  const updateRequest = buildBulkUpdateRequest("template", ["q1"], { difficulty: 2 });
+  await generateBank(createRequest, callFunction);
+  await bulkUpdateBank(updateRequest, callFunction);
+  assert.deepEqual(calls.map((call) => call.name), ["generate-multiplication-bank", "bulk-update-questions"]);
+  assert.deepEqual(calls.map((call) => call.body), [createRequest, updateRequest]);
 });

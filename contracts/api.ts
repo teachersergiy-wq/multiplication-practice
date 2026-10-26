@@ -412,6 +412,63 @@ export interface GenerateMultiplicationTestData {
 }
 
 /* ------------------------------------------------------------------ */
+/* Teacher administration (admin only)                                 */
+/* ------------------------------------------------------------------ */
+
+/** Admin = user listed in private.admin_users. Seeded once by the coordinator, never by the client. */
+export interface TeacherSummary {
+  userId: Uuid;
+  email: string;
+  fullName: string | null;
+  /** false when the Auth account is disabled (banned) by an admin. */
+  active: boolean;
+  isAdmin: boolean;
+  createdAt: IsoDateTime;
+  /** false when the teacher has not signed in yet and has no profile. */
+  hasProfile: boolean;
+}
+
+/**
+ * Creates an Auth user (email confirmed), adds the email to the allowlist and
+ * provisions the teacher profile (school and class as in provision-teacher).
+ * The generated password is returned once and never stored or logged.
+ */
+export interface AddTeacherRequest {
+  /** Lower-cased and trimmed server-side; must be a valid e-mail. */
+  email: string;
+  /** 1-120 characters. */
+  fullName: string;
+}
+export interface AddTeacherData {
+  teacher: TeacherSummary;
+  /** 12+ characters, shown once to the admin. */
+  temporaryPassword: string;
+}
+
+export type ListTeachersRequest = Record<string, never>;
+export interface ListTeachersData {
+  teachers: TeacherSummary[];
+}
+
+/** New generated password, returned once. Not allowed for the caller's own account. */
+export interface ResetTeacherPasswordRequest {
+  userId: Uuid;
+}
+export interface ResetTeacherPasswordData {
+  userId: Uuid;
+  temporaryPassword: string;
+}
+
+/** Disables or re-enables a teacher account (no data is deleted). Not allowed for admins or oneself. */
+export interface SetTeacherActiveRequest {
+  userId: Uuid;
+  active: boolean;
+}
+export interface SetTeacherActiveData {
+  teacher: TeacherSummary;
+}
+
+/* ------------------------------------------------------------------ */
 /* Attempts (student only)                                             */
 /* ------------------------------------------------------------------ */
 
@@ -510,6 +567,10 @@ export interface FunctionContracts {
   "create-class": { role: "teacher"; request: CreateClassRequest; data: CreateClassData };
   "set-class-subject": { role: "teacher"; request: SetClassSubjectRequest; data: SetClassSubjectData };
   "generate-multiplication-test": { role: "teacher"; request: GenerateMultiplicationTestRequest; data: GenerateMultiplicationTestData };
+  "add-teacher": { role: "admin"; request: AddTeacherRequest; data: AddTeacherData };
+  "list-teachers": { role: "admin"; request: ListTeachersRequest; data: ListTeachersData };
+  "reset-teacher-password": { role: "admin"; request: ResetTeacherPasswordRequest; data: ResetTeacherPasswordData };
+  "set-teacher-active": { role: "admin"; request: SetTeacherActiveRequest; data: SetTeacherActiveData };
   "start-attempt": { role: "student"; request: StartAttemptRequest; data: StartAttemptData };
   "submit-answer": { role: "student"; request: SubmitAnswerRequest; data: SubmitAnswerData };
   "finish-attempt": { role: "student"; request: FinishAttemptRequest; data: FinishAttemptData };

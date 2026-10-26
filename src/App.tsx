@@ -7,6 +7,7 @@ import { QuestionEditor } from "./questions/QuestionEditor";
 import { TemplateLibrary } from "./library/TemplateLibrary";
 import { supabase } from "./lib/supabase";
 import { StudentPortal } from "./students/StudentPortal";
+import { TeacherAccountMenu } from "./auth/TeacherAccountMenu";
 
 function readDrafts(userStorageKey: string): AssessmentDraft[] {
   try {
@@ -100,11 +101,7 @@ function Dashboard() {
           <a href="#builder">Конструктор</a>
           <a href="#classes">Мої класи</a>
         </nav>
-        {teacher ? (
-          <button className="profile-button" aria-label={`Вийти з облікового запису ${teacher.email}`} onClick={() => void teacher.signOut()}>
-            <span>{teacher.displayName.slice(0, 1).toLocaleUpperCase("uk-UA")}</span><span className="profile-name">{teacher.displayName}</span><span aria-hidden="true">↪</span>
-          </button>
-        ) : <button className="profile-button" aria-label="Профіль учителя"><span>С</span><span className="profile-name">Світлана</span><span aria-hidden="true">⌄</span></button>}
+        {teacher && supabase ? <TeacherAccountMenu client={supabase} identity={teacher} /> : <button className="profile-button" aria-label="Профіль учителя"><span>С</span><span className="profile-name">Світлана</span><span aria-hidden="true">⌄</span></button>}
       </header>
 
       <section className="hero" id="home">

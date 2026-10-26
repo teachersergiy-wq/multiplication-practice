@@ -12,7 +12,7 @@ grant all on table private.admin_users to service_role;
 
 create table if not exists private.admin_audit (
   id uuid primary key default gen_random_uuid(),
-  actor uuid not null references auth.users (id) on delete set null,
+  actor uuid not null references auth.users (id) on delete cascade,
   action text not null,
   target uuid,
   created_at timestamptz not null default now()
@@ -78,7 +78,6 @@ revoke all on function public.api_admin_write_audit(uuid, text, uuid)
 grant execute on function public.api_admin_write_audit(uuid, text, uuid)
   to service_role;
 
--- After Auth user exists: allowlist + provision profile/school/class + audit.
 create or replace function public.api_admin_register_teacher(
   p_admin_id uuid,
   p_user_id uuid,
@@ -207,7 +206,6 @@ $$;
 revoke all on function public.api_admin_list_teachers(uuid) from public, anon, authenticated;
 grant execute on function public.api_admin_list_teachers(uuid) to service_role;
 
--- Validates reset/set-active targets: not self; set-active also not admin.
 create or replace function public.api_admin_assert_manage_teacher(
   p_admin_id uuid,
   p_target_id uuid,

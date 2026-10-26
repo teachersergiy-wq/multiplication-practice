@@ -93,7 +93,9 @@ export function AssignmentManager({ client, teacherId, template, onClose, onPubl
       const poolQuestions = (poolQuestionsResult.data ?? []) as { difficulty: number | null }[];
       const counts = [0, 0, 0, 0, 0];
       for (const question of poolQuestions) if (question.difficulty && question.difficulty >= 1 && question.difficulty <= 5) counts[question.difficulty - 1] += 1;
-      setBankByLevel(counts);\n      const savedAssignments = (assignmentResult.data ?? []) as unknown as AssignmentRow[];
+      setBankByLevel(counts);
+      if (poolQuestionsResult.error) { setError("Не вдалося перевірити кількість запитань у банку."); return; }
+      const savedAssignments = (assignmentResult.data ?? []) as unknown as AssignmentRow[];
       if (subjectResult.data?.name) setSubjectName(subjectResult.data.name);
       const alreadyAssigned = new Set(savedAssignments.map((item) => item.class_id));
       const unassignedClasses = compatibleClasses.filter((item) => !alreadyAssigned.has(item.id));

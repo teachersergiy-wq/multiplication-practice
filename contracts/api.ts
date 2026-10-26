@@ -84,6 +84,12 @@ export interface AssessmentSettings {
   maxErrors?: number;
   /** Overall time limit. When absent, the sum of question limits is used if every question has one. */
   totalTimeSeconds?: number;
+  /**
+   * Pool template ("BIG" test): the template holds a bank of questions, and every attempt
+   * gets a random sample with exactly levelCounts[d-1] questions of difficulty d (1-5).
+   * Each count is an integer >= 0; the sum is 1-100.
+   */
+  pool?: { levelCounts: [number, number, number, number, number] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -203,6 +209,8 @@ interface AuthoredBase {
   promptText: string;
   points: number;
   timeLimitSeconds?: number | null;
+  /** 1-5. Required for every question of a pool template; ignored elsewhere. */
+  difficulty?: 1 | 2 | 3 | 4 | 5 | null;
 }
 
 /**
@@ -469,6 +477,50 @@ export interface SetTeacherActiveData {
 }
 
 /* ------------------------------------------------------------------ */
+/* BIG multiplication table: question pool (teacher)                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Creates a draft pool template whose bank contains every example of the BIG table
+ * (see docs/API_CONTRACT.md, section "BIG таблиця множення"). The teacher edits difficulty,
+ * points and time in bulk and publishes through publish-assessment (decision D3).
+ */
+export interface GenerateMultiplicationBankRequest {
+  /** Active subject with code `mathematics`. */
+  subjectId: Uuid;
+  /** Integer 1-11. */
+  gradeLevel: number;
+  mode: AssessmentMode;
+  /** Optional, 1-120 characters; default "BIG таблиця множення". */
+  title?: string;
+  /** Default [5, 10, 10, 5, 0]. Integers >= 0, sum 1-100. */
+  levelCounts?: [number, number, number, number, number];
+}
+export interface GenerateMultiplicationBankData {
+  templateId: Uuid;
+  title: string;
+  bankSize: number;
+  /** Number of bank questions per difficulty 1-5 right after generation. */
+  bankByLevel: [number, number, number, number, number];
+  settings: AssessmentSettings;
+}
+
+/** Bulk edit of draft questions: exactly one of `update` or `delete`. At most 500 ids per call. */
+export interface BulkUpdateQuestionsRequest {
+  templateId: Uuid;
+  questionIds: Uuid[];
+  update?: {
+    difficulty?: 1 | 2 | 3 | 4 | 5;
+    points?: number;
+    timeLimitSeconds?: number | null;
+  };
+  delete?: true;
+}
+export interface BulkUpdateQuestionsData {
+  affected: number;
+}
+
+/* ------------------------------------------------------------------ */
 /* Attempts (student only)                                             */
 /* ------------------------------------------------------------------ */
 
@@ -567,6 +619,8 @@ export interface FunctionContracts {
   "create-class": { role: "teacher"; request: CreateClassRequest; data: CreateClassData };
   "set-class-subject": { role: "teacher"; request: SetClassSubjectRequest; data: SetClassSubjectData };
   "generate-multiplication-test": { role: "teacher"; request: GenerateMultiplicationTestRequest; data: GenerateMultiplicationTestData };
+  "generate-multiplication-bank": { role: "teacher"; request: GenerateMultiplicationBankRequest; data: GenerateMultiplicationBankData };
+  "bulk-update-questions": { role: "teacher"; request: BulkUpdateQuestionsRequest; data: BulkUpdateQuestionsData };
   "add-teacher": { role: "admin"; request: AddTeacherRequest; data: AddTeacherData };
   "list-teachers": { role: "admin"; request: ListTeachersRequest; data: ListTeachersData };
   "reset-teacher-password": { role: "admin"; request: ResetTeacherPasswordRequest; data: ResetTeacherPasswordData };

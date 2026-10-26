@@ -36,6 +36,7 @@ export interface AssignmentResultData {
   students: TeacherResultStudent[];
   attempts: TeacherResultAttempt[];
   questions: TeacherResultQuestion[];
+  questionsByAttempt?: Map<string, TeacherResultQuestion[]>;
   responses: TeacherResultResponse[];
 }
 
@@ -46,6 +47,7 @@ export function summarizeAssignmentResults(data: AssignmentResultData): {
   averagePercent: number | null;
   mostCommonErrors: Array<{ question: TeacherResultQuestion; count: number }>;
   responsesByAttempt: Map<string, TeacherResultResponse[]>;
+  questionsByAttempt: Map<string, TeacherResultQuestion[]>;
 };
 export function formatStudentAnswer(question: TeacherResultQuestion, response: TeacherResultResponse | null | undefined): string;
 export function promptText(prompt: unknown): string;

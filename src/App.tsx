@@ -44,6 +44,7 @@ function Dashboard() {
   const [title, setTitle] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; title: string } | null>(null);
+  const [focusQuestionId, setFocusQuestionId] = useState<string | null>(null);
   const [editorVersion, setEditorVersion] = useState(0);
   const [dirtyQuestionDraftId, setDirtyQuestionDraftId] = useState<string | null>(null);
 
@@ -80,12 +81,13 @@ function Dashboard() {
     window.setTimeout(() => setNotice(""), 5000);
   }
 
-  function openTemplate(draft: { id: string; title: string }) {
+  function openTemplate(draft: { id: string; title: string }, questionId?: string) {
     if (dirtyQuestionDraftId && selectedTemplate?.id !== draft.id) {
       if (!window.confirm("У редакторі є незбережене запитання. Відкрити інший тест і відкинути ці зміни?")) return;
       setDirtyQuestionDraftId(null);
     }
     setSelectedTemplate(draft);
+    setFocusQuestionId(questionId ?? null);
     window.setTimeout(() => document.getElementById("question-editor")?.scrollIntoView({ behavior: "smooth" }), 0);
   }
 
@@ -170,7 +172,7 @@ function Dashboard() {
       </section>
 
       {teacher && <StudentManagement />}
-      <QuestionEditor key={`${editorVersion}:${selectedTemplate?.id ?? "new"}`} selectedDraft={selectedTemplate} onUnsavedChangesChange={(draftId, dirty) => setDirtyQuestionDraftId(dirty ? draftId : null)} />
+      <QuestionEditor key={`${editorVersion}:${selectedTemplate?.id ?? "new"}`} selectedDraft={selectedTemplate} focusQuestionId={focusQuestionId} onUnsavedChangesChange={(draftId, dirty) => setDirtyQuestionDraftId(dirty ? draftId : null)} />
 
       <footer className="footer" id="classes"><span>Маленькі кроки — великі відкриття.</span><span>Навчальна студія <b>✳</b> 2026</span></footer>
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрити">×</button></div>}

@@ -229,7 +229,7 @@ export function QuestionEditor({ selectedDraft, focusQuestionId, onUnsavedChange
       {errors.length > 0 && <ul className="question-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul>}
       {supabase && !selectedDraft && <p className="question-preview-help">Виберіть чернетку у бібліотеці, щоб переглянути або редагувати її питання.</p>}
       <div className="question-editor-grid">
-        {(!supabase || (selectedDraft && draftStatus === "draft")) && <form className="question-form" onSubmit={saveQuestion} onChange={markFormDirty} onClick={(event) => {
+        {(!supabase || (selectedDraft && draftStatus === "draft" && !loading)) && <form className="question-form" onSubmit={saveQuestion} onChange={markFormDirty} onClick={(event) => {
           const button = (event.target as HTMLElement).closest("button");
           if (button?.type === "button" && !button.hasAttribute("data-dirty-ignore")) markFormDirty();
         }}>

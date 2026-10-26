@@ -104,3 +104,9 @@ verify_jwt = true
 
 [functions.set-teacher-active]
 verify_jwt = true
+
+[functions.generate-multiplication-bank]
+verify_jwt = true
+
+[functions.bulk-update-questions]
+verify_jwt = true

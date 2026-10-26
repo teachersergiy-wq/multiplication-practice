@@ -93,3 +93,17 @@ test("answer and duration formatters cover answer types and terminal statuses", 
   assert.equal(formatElapsed(65_000), "1 хв 5 с");
   assert.equal(statusLabel("abandoned"), "Спробу перервано");
 });
+
+test("teacher result details count only questions sampled for each attempt", async () => {
+  const client = mockClient({
+    class_students: { data: [{ student_id: student.id, profiles: { full_name: student.name } }], error: null },
+    assessment_attempts: { data: [finished("sampled")], error: null },
+    assessment_attempt_questions: { data: [{ attempt_id: "sampled", question_id: "q2", position: 1 }], error: null },
+    assessment_questions: { data: [q2], error: null },
+    assessment_responses: { data: [{ attempt_id: "sampled", question_id: "q2", response: { type: "numeric", text: "6" }, is_correct: true, awarded_points: 1 }], error: null },
+  });
+  const loaded = await loadAssignmentResults(client, { assignmentId: "a", classId: "c", templateId: "t" });
+  assert.equal(loaded.ok, true);
+  assert.deepEqual(loaded.data.questionsByAttempt.get("sampled").map((question) => question.id), ["q2"]);
+  assert.deepEqual(summarizeAssignmentResults(loaded.data).mostCommonErrors, []);
+});

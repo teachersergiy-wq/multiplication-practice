@@ -206,6 +206,7 @@ $$;
 revoke all on function public.api_admin_list_teachers(uuid) from public, anon, authenticated;
 grant execute on function public.api_admin_list_teachers(uuid) to service_role;
 
+-- Target must be a teacher profile. Optional: block admins when p_forbid_admin.
 create or replace function public.api_admin_assert_manage_teacher(
   p_admin_id uuid,
   p_target_id uuid,
@@ -216,6 +217,8 @@ language plpgsql
 security definer
 set search_path = public, private, pg_temp
 as $$
+declare
+  v_role public.user_role;
 begin
   perform public.api_admin_require(p_admin_id);
   if p_target_id is null then
@@ -224,6 +227,15 @@ begin
   if p_target_id = p_admin_id then
     raise exception 'invalid_request: cannot target self' using errcode = 'P0001';
   end if;
+
+  select p.role into v_role from public.profiles p where p.id = p_target_id;
+  if v_role is null then
+    raise exception 'not_found: target has no profile' using errcode = 'P0001';
+  end if;
+  if v_role is distinct from 'teacher' then
+    raise exception 'forbidden: target is not a teacher' using errcode = 'P0001';
+  end if;
+
   if p_forbid_admin and private.is_admin(p_target_id) then
     raise exception 'forbidden: cannot manage admin' using errcode = 'P0001';
   end if;

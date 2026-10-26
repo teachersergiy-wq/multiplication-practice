@@ -6,6 +6,11 @@ import { jsonErr, jsonOk } from "../_shared/http.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { generateSecurePassword } from "../_shared/password.ts";
 
+function logRpc(tag: string, err: { message?: string; code?: string } | null) {
+  if (!err) return;
+  console.error(tag, err.code ?? "", (err.message ?? "").slice(0, 120));
+}
+
 Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
@@ -27,11 +32,11 @@ Deno.serve(async (req) => {
       p_user_id: user.id,
     });
     if (reqErr) {
+      logRpc("api_admin_require", reqErr);
       const msg = reqErr.message ?? "";
       if (msg.includes("forbidden")) {
         return jsonErr(req, "forbidden", "Admin required");
       }
-      console.error("api_admin_require failed");
       return jsonErr(req, "internal", "Admin check failed");
     }
 
@@ -71,11 +76,11 @@ Deno.serve(async (req) => {
     });
 
     if (createErr || !created.user) {
+      logRpc("createUser", createErr);
       const m = (createErr?.message ?? "").toLowerCase();
       if (m.includes("already") || m.includes("registered") || m.includes("exists")) {
         return jsonErr(req, "conflict", "Email already registered");
       }
-      console.error("createUser failed");
       return jsonErr(req, "internal", "Auth create failed");
     }
 
@@ -89,6 +94,7 @@ Deno.serve(async (req) => {
     });
 
     if (regErr) {
+      logRpc("api_admin_register_teacher", regErr);
       try {
         await admin.auth.admin.deleteUser(newId);
       } catch {
@@ -101,7 +107,6 @@ Deno.serve(async (req) => {
       if (msg.includes("invalid_request")) {
         return jsonErr(req, "invalid_request", "Invalid teacher data");
       }
-      console.error("api_admin_register_teacher failed");
       return jsonErr(req, "internal", "Register teacher failed");
     }
 

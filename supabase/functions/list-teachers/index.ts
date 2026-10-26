@@ -24,11 +24,15 @@ Deno.serve(async (req) => {
     });
 
     if (error) {
+      console.error(
+        "api_admin_list_teachers",
+        error.code ?? "",
+        (error.message ?? "").slice(0, 120),
+      );
       const msg = error.message ?? "";
       if (msg.includes("forbidden")) {
         return jsonErr(req, "forbidden", "Admin required");
       }
-      console.error("api_admin_list_teachers failed");
       return jsonErr(req, "internal", "List failed");
     }
 

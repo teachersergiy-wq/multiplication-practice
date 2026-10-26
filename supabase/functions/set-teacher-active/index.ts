@@ -1,4 +1,4 @@
-/** set-teacher-active — admin only; ban/unban Auth account. */
+/** set-teacher-active — admin only; ban/unban Auth account; target must be teacher. */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
@@ -41,14 +41,27 @@ Deno.serve(async (req) => {
       p_forbid_admin: true,
     });
     if (assertErr) {
+      console.error(
+        "assert_manage",
+        assertErr.code ?? "",
+        (assertErr.message ?? "").slice(0, 120),
+      );
       const msg = assertErr.message ?? "";
+      if (msg.includes("cannot manage admin")) {
+        return jsonErr(req, "forbidden", "Cannot manage admin");
+      }
+      if (msg.includes("not a teacher")) {
+        return jsonErr(req, "forbidden", "Target is not a teacher");
+      }
       if (msg.includes("forbidden")) {
-        return jsonErr(req, "forbidden", msg.includes("admin") ? "Cannot manage admin" : "Admin required");
+        return jsonErr(req, "forbidden", "Admin required");
+      }
+      if (msg.includes("not_found")) {
+        return jsonErr(req, "not_found", "Teacher not found");
       }
       if (msg.includes("invalid_request")) {
         return jsonErr(req, "invalid_request", "Cannot change own active state");
       }
-      console.error("assert_manage failed");
       return jsonErr(req, "internal", "Check failed");
     }
 
@@ -56,7 +69,7 @@ Deno.serve(async (req) => {
       ban_duration: body.active ? "none" : "876000h",
     });
     if (banErr) {
-      console.error("ban update failed");
+      console.error("ban update", banErr.status ?? "", (banErr.message ?? "").slice(0, 80));
       return jsonErr(req, "internal", "Active state update failed");
     }
 
@@ -70,7 +83,11 @@ Deno.serve(async (req) => {
       p_user_id: body.userId,
     });
     if (sumErr || !summary) {
-      console.error("teacher_summary failed");
+      console.error(
+        "teacher_summary",
+        sumErr?.code ?? "",
+        (sumErr?.message ?? "").slice(0, 80),
+      );
       return jsonErr(req, "internal", "Summary failed");
     }
 

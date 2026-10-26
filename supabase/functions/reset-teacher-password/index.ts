@@ -1,4 +1,4 @@
-/** reset-teacher-password — admin only; not for self. */
+/** reset-teacher-password — admin only; not for self; target must be teacher. */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
@@ -39,12 +39,21 @@ Deno.serve(async (req) => {
       p_forbid_admin: false,
     });
     if (assertErr) {
+      console.error(
+        "assert_manage",
+        assertErr.code ?? "",
+        (assertErr.message ?? "").slice(0, 120),
+      );
       const msg = assertErr.message ?? "";
-      if (msg.includes("forbidden")) return jsonErr(req, "forbidden", "Admin required");
+      if (msg.includes("forbidden")) {
+        return jsonErr(req, "forbidden", "Admin required or target is not a teacher");
+      }
+      if (msg.includes("not_found")) {
+        return jsonErr(req, "not_found", "Teacher not found");
+      }
       if (msg.includes("invalid_request")) {
         return jsonErr(req, "invalid_request", "Cannot reset own password");
       }
-      console.error("assert_manage failed");
       return jsonErr(req, "internal", "Check failed");
     }
 
@@ -53,7 +62,7 @@ Deno.serve(async (req) => {
       password: temporaryPassword,
     });
     if (updErr) {
-      console.error("updateUser password failed");
+      console.error("updateUser password", updErr.status ?? "", (updErr.message ?? "").slice(0, 80));
       return jsonErr(req, "internal", "Password update failed");
     }
 

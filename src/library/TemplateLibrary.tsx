@@ -240,6 +240,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
       template={bankTemplate}
       onClose={() => setBankTemplate(null)}
       onEditQuestion={(questionId) => {
+        if (editorHasUnsavedChanges && !window.confirm("У редакторі є незбережене запитання. Відкрити це питання й відкинути незбережені зміни?")) return;
         onOpen({ id: bankTemplate.id, title: bankTemplate.title }, questionId);
         setBankTemplate(null);
       }}

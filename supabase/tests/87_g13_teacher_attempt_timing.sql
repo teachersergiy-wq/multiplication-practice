@@ -1,4 +1,6 @@
 -- G13: teacher attempt timing RPC
+-- Review fixes: draft then publish; completed needs finished_at;
+-- owner path via set_jwt; exception flags instead of tests.fail in WHEN OTHERS.
 begin;
 
 do $$
@@ -18,6 +20,7 @@ declare
   payload jsonb;
   secs1 numeric;
   secs2 numeric;
+  saw_error boolean;
 begin
   perform tests.ensure_auth_user(teacher_a, 'g13-ta@test.invalid');
   perform tests.ensure_auth_user(teacher_b, 'g13-tb@test.invalid');
@@ -45,8 +48,9 @@ begin
     returning id into subject_id;
   end if;
 
+  -- draft → questions → publish (published templates are frozen)
   insert into public.assessment_templates (id, teacher_id, subject_id, grade_level, title, status, mode)
-  values (gen_random_uuid(), teacher_a, subject_id, 5, 'G13 Timing', 'published', 'practice')
+  values (gen_random_uuid(), teacher_a, subject_id, 5, 'G13 Timing', 'draft', 'practice')
   returning id into template_id;
 
   insert into public.assessment_questions (id, template_id, position, question_type, prompt, points)
@@ -54,24 +58,33 @@ begin
     (q1, template_id, 1, 'numeric', '{"text":"2×3"}'::jsonb, 1),
     (q2, template_id, 2, 'numeric', '{"text":"4×5"}'::jsonb, 1);
 
+  update public.assessment_templates
+  set status = 'published'
+  where id = template_id;
+
   insert into public.assessment_assignments (id, template_id, class_id, assigned_by)
   values (gen_random_uuid(), template_id, class_a, teacher_a)
   returning id into assignment_id;
 
-  insert into public.assessment_attempts (id, assignment_id, student_id, status, started_at)
+  insert into public.assessment_attempts (
+    id, assignment_id, student_id, status, started_at, finished_at
+  )
   values (
     gen_random_uuid(), assignment_id, student_a, 'completed',
-    timestamptz '2026-10-27 12:00:00+00'
+    timestamptz '2026-10-27 12:00:00+00',
+    timestamptz '2026-10-27 12:00:15+00'
   )
   returning id into attempt_id;
 
-  -- No responses → empty questions, null summary
+  -- (1) Owner via set_jwt receives data (empty first)
+  perform tests.set_jwt(teacher_a);
   payload := public.api_teacher_attempt_timing(teacher_a, attempt_id);
   perform tests.ok(
     jsonb_array_length(payload->'questions') = 0
       and payload->'summary'->>'avgSeconds' is null,
-    'no responses → empty timing'
+    'no responses → empty timing (jwt owner)'
   );
+  perform tests.clear_jwt();
 
   insert into public.assessment_responses (attempt_id, question_id, response, is_correct, awarded_points, answered_at)
   values
@@ -80,6 +93,8 @@ begin
     (attempt_id, q2, '{"type":"numeric","value":20}'::jsonb, true, 1,
      timestamptz '2026-10-27 12:00:12+00');
 
+  -- (1) Owner with JWT sees deltas
+  perform tests.set_jwt(teacher_a);
   payload := public.api_teacher_attempt_timing(teacher_a, attempt_id);
   secs1 := (payload->'questions'->0->>'answerSeconds')::numeric;
   secs2 := (payload->'questions'->1->>'answerSeconds')::numeric;
@@ -95,32 +110,35 @@ begin
     (payload->'summary'->>'avgSeconds')::numeric = 6.00,
     'summary avg'
   );
-
-  -- Other teacher → not_found
-  begin
-    perform public.api_teacher_attempt_timing(teacher_b, attempt_id);
-    perform tests.fail('teacher B must not see teacher A attempt timing');
-  exception
-    when others then
-      if sqlerrm not like '%not_found%' then
-        perform tests.fail('expected not_found, got: ' || sqlerrm);
-      end if;
-  end;
-
-  -- Student JWT cannot use another teacher id
-  perform tests.set_jwt(student_a);
-  begin
-    perform public.api_teacher_attempt_timing(teacher_a, attempt_id);
-    perform tests.fail('student must not call as teacher');
-  exception
-    when others then
-      if sqlerrm not like '%not_found%' then
-        perform tests.fail('expected not_found for student, got: ' || sqlerrm);
-      end if;
-  end;
   perform tests.clear_jwt();
 
-  -- anon no execute
+  -- (2) Other teacher → not_found
+  perform tests.set_jwt(teacher_b);
+  saw_error := false;
+  begin
+    perform public.api_teacher_attempt_timing(teacher_b, attempt_id);
+  exception
+    when others then
+      saw_error := true;
+      perform tests.ok(sqlerrm ilike '%not_found%', 'teacher B not_found: ' || sqlerrm);
+  end;
+  perform tests.ok(saw_error, 'teacher B must error');
+  perform tests.clear_jwt();
+
+  -- (3) Student → not_found (cannot impersonate teacher_a)
+  perform tests.set_jwt(student_a);
+  saw_error := false;
+  begin
+    perform public.api_teacher_attempt_timing(teacher_a, attempt_id);
+  exception
+    when others then
+      saw_error := true;
+      perform tests.ok(sqlerrm ilike '%not_found%', 'student not_found: ' || sqlerrm);
+  end;
+  perform tests.ok(saw_error, 'student must error');
+  perform tests.clear_jwt();
+
+  -- (4) anon no execute
   perform tests.ok(
     not has_function_privilege('anon', 'public.api_teacher_attempt_timing(uuid,uuid)', 'execute'),
     'anon cannot execute api_teacher_attempt_timing'

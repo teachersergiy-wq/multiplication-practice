@@ -110,3 +110,21 @@ verify_jwt = true
 
 [functions.bulk-update-questions]
 verify_jwt = true
+
+[functions.list-competitive-topics]
+verify_jwt = true
+
+[functions.start-competitive-run]
+verify_jwt = true
+
+[functions.submit-competitive-answer]
+verify_jwt = true
+
+[functions.publish-competitive-result]
+verify_jwt = true
+
+[functions.get-leaderboard]
+verify_jwt = true
+
+[functions.get-competitive-results]
+verify_jwt = true

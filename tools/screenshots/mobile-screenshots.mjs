@@ -182,20 +182,21 @@ async function captureStudentFlow(browser) {
 
     for (const viewport of viewports) {
       const keyboardViewport = { width: viewport.width, height: Math.max(240, Math.round(viewport.height / 2)) };
+      const keyboardSuffix = keyboardViewport.width + "x" + keyboardViewport.height;
       await page.setViewportSize(keyboardViewport);
       const input = page.locator(".student-answer-label input").first();
       await input.waitFor({ state: "visible", timeout: 5000 });
       const focused = await input.evaluate((element) => document.activeElement === element);
-      if (!focused) failures.push("student-question-keyboard-" + viewport.suffix + ".png: numeric answer field did not retain autofocus.");
+      if (!focused) failures.push("student-question-keyboard-" + keyboardSuffix + ".png: numeric answer field did not retain autofocus.");
 
       const saveNext = page.getByRole("button", { name: "Зберегти й далі", exact: true });
-      await capture(page, "student-question-keyboard-" + viewport.suffix + ".png");
+      await capture(page, "student-question-keyboard-" + keyboardSuffix + ".png");
       if (!(await saveNext.isVisible().catch(() => false))) {
-        failures.push("student-question-keyboard-" + viewport.suffix + ".png: “Зберегти й далі” is not visible with reduced viewport.");
+        failures.push("student-question-keyboard-" + keyboardSuffix + ".png: “Зберегти й далі” is not visible with reduced viewport.");
       } else {
         const box = await saveNext.boundingBox();
         if (!box || box.y + box.height > keyboardViewport.height + 1) {
-          failures.push("student-question-keyboard-" + viewport.suffix + ".png: “Зберегти й далі” extends below the viewport.");
+          failures.push("student-question-keyboard-" + keyboardSuffix + ".png: “Зберегти й далі” extends below the viewport.");
         }
       }
     }

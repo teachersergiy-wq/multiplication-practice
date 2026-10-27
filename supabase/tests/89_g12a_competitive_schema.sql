@@ -6,8 +6,8 @@ do $$
 declare
   teacher_a uuid := 'a12a0001-0000-4000-8000-0000000000a1';
   teacher_b uuid := 'a12a0001-0000-4000-8000-0000000000b1';
-  student_a uuid := 'a12a0001-0000-4000-8000-0000000000s1';
-  student_b uuid := 'a12a0001-0000-4000-8000-0000000000s2';
+  student_a uuid := 'a12a0001-0000-4000-8000-0000000000c1';
+  student_b uuid := 'a12a0001-0000-4000-8000-0000000000c2';
   school_id uuid;
   class_a uuid;
   class_b uuid;

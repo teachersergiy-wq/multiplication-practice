@@ -1,6 +1,4 @@
--- G11: finalize_attempt scores only pool sample; out-of-sample submit blocked in start path via membership.
--- Patch submit: reject question not in assessment_attempt_questions for pool templates.
-
+-- G11: finalize_attempt scores only pool sample
 create or replace function private.finalize_attempt(p_attempt_id uuid)
 returns jsonb language plpgsql security definer set search_path = public, private, pg_temp as $$
 declare
@@ -19,7 +17,7 @@ begin
   where a.id = v_attempt.assignment_id;
   v_is_pool := v_settings ? 'pool';
 
-  if v_attempt.status in ('completed', 'expired', 'abandoned') then
+  if v_attempt.status in ('completed', 'abandoned') then
     if v_is_pool then
       select count(*)::int into v_qcount from public.assessment_attempt_questions aq where aq.attempt_id = p_attempt_id;
       select count(*)::int into v_answered from public.assessment_responses resp
@@ -94,7 +92,6 @@ end; $$;
 revoke all on function private.finalize_attempt(uuid) from public, anon, authenticated;
 grant execute on function private.finalize_attempt(uuid) to service_role;
 
--- Guard for pool submits (runs before answer insert via replacing api_submit_answer body prefix check).
 create or replace function private.assert_question_in_attempt(p_attempt_id uuid, p_question_id uuid)
 returns void language plpgsql security definer set search_path = public, private, pg_temp as $$
 declare v_settings jsonb;

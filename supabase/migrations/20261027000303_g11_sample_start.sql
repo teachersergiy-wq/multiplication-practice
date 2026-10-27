@@ -61,7 +61,11 @@ begin
     v_attempt_id := v_existing.id; v_resumed := true;
   else
     if not coalesce(v_asg.allow_retries, false) then
-      if exists (select 1 from public.assessment_attempts a where a.assignment_id = p_assignment_id and a.student_id = p_student_id and a.status in ('completed','expired','abandoned')) then
+      if exists (
+        select 1 from public.assessment_attempts a
+        where a.assignment_id = p_assignment_id and a.student_id = p_student_id
+          and a.status in ('completed', 'abandoned')
+      ) then
         raise exception 'retry_not_allowed' using errcode = 'P0001';
       end if;
     end if;

@@ -13,8 +13,8 @@ declare
   template_id uuid;
   assignment_id uuid;
   attempt_id uuid;
-  q1 uuid := 'a1300001-0000-4000-8000-0000000000q1';
-  q2 uuid := 'a1300001-0000-4000-8000-0000000000q2';
+  q1 uuid := 'a1300001-0000-4000-8000-0000000000d1';
+  q2 uuid := 'a1300001-0000-4000-8000-0000000000d2';
   payload jsonb;
   secs1 numeric;
   secs2 numeric;

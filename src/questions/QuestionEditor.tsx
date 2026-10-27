@@ -22,8 +22,9 @@ const moveItem = <T,>(items: T[], index: number, direction: -1 | 1): T[] => {
   return next;
 };
 
-export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
+export function QuestionEditor({ selectedDraft, focusQuestionId, onUnsavedChangesChange }: {
   selectedDraft?: { id: string; title: string } | null;
+  focusQuestionId?: string | null;
   onUnsavedChangesChange?: (draftId: string | null, dirty: boolean) => void;
 }) {
   const [type, setType] = useState<QuestionType>("numeric");
@@ -44,6 +45,8 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draftStatus, setDraftStatus] = useState<AssessmentStatus>("draft");
+  const [isPool, setIsPool] = useState(false);
+  const [difficulty, setDifficulty] = useState("1");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
@@ -66,6 +69,7 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
     setErrors([]);
     if (!selectedDraft || !supabase) {
       setDraftStatus("draft");
+      setIsPool(false);
       setLoading(false);
       return () => { active = false; };
     }
@@ -78,11 +82,14 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
         return;
       }
       setQuestions(result.data.questions);
+      setIsPool(Boolean(result.data.template.settings?.pool));
       setDraftStatus(result.data.template.status);
+      const focused = focusQuestionId ? result.data.questions.find((question) => question.id === focusQuestionId) : null;
+      if (focused) loadQuestion(focused);
       setLoading(false);
     });
     return () => { active = false; };
-  }, [selectedDraft?.id]);
+  }, [focusQuestionId, selectedDraft?.id]);
 
   function setInputRef(id: string, element: HTMLInputElement | null) {
     if (element) inputRefs.current.set(id, element);
@@ -112,6 +119,7 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
     setPromptText(question.promptText);
     setPoints(String(question.points));
     setTimeLimit(question.timeLimitSeconds == null ? "" : String(question.timeLimitSeconds));
+    setDifficulty(String(question.difficulty ?? 1));
     if (question.type === "true_false") setCorrectBoolean(question.correct);
     if (question.type === "single_choice") { setOptions(question.options.map((value) => ({ id: makeId(), value }))); setCorrectIndex(question.correctIndex); }
     if (question.type === "multiple_choice") { setOptions(question.options.map((value) => ({ id: makeId(), value }))); setCorrectIndexes(question.correctIndexes); }
@@ -128,11 +136,11 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
     setEditingId(null); setType("numeric"); setPromptText(""); setPoints("1"); setTimeLimit("");
     setOptions(textItems(4)); setCorrectIndex(null); setCorrectIndexes([]); setItems(textItems(3));
     setPairs(matchItems(2)); setCorrectBoolean(null); setNumericValue(""); setTolerance("");
-    setAccepted(textItems(1)); setCaseSensitive(false);
+    setAccepted(textItems(1)); setCaseSensitive(false); setDifficulty("1");
   }
 
   function makeQuestion(): unknown {
-    const common = { promptText, points: Number(points), ...(timeLimit ? { timeLimitSeconds: Number(timeLimit) } : {}) };
+    const common = { promptText, points: Number(points), ...(timeLimit ? { timeLimitSeconds: Number(timeLimit) } : {}), ...(isPool ? { difficulty: Number(difficulty) } : {}) };
     switch (type) {
       case "true_false": return { ...common, type, correct: correctBoolean };
       case "single_choice": return { ...common, type, options: options.map((item) => item.value), correctIndex };
@@ -148,6 +156,7 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
     event.preventDefault();
     const candidate = makeQuestion();
     const validationErrors = validateAuthoredQuestion(candidate);
+    if (isPool && !/^[1-5]$/.test(difficulty)) validationErrors.push("Для запитання пулу оберіть рівень складності від 1 до 5.");
     setErrors(validationErrors); setNotice("");
     if (!isAuthoredQuestion(candidate)) return;
     if (!selectedDraft || !supabase) {
@@ -201,7 +210,7 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
 
   function preview(question: AuthoredQuestion, previewId: string) {
     return <article className="question-preview" key={previewId}>
-      <span className="question-preview-type">{questionTypeLabels[question.type]} · {question.points} б.</span>
+      <span className="question-preview-type">{questionTypeLabels[question.type]} · {question.points} б.{question.difficulty ? ` · рівень ${question.difficulty}` : ""}</span>
       <strong>{question.promptText}</strong>
       {partialCreditHint(question.type) && <p className="partial-credit-hint">{partialCreditHint(question.type)}</p>}
       {question.type === "true_false" && <p>Так &nbsp; / &nbsp; Ні</p>}
@@ -220,7 +229,7 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
       {errors.length > 0 && <ul className="question-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul>}
       {supabase && !selectedDraft && <p className="question-preview-help">Виберіть чернетку у бібліотеці, щоб переглянути або редагувати її питання.</p>}
       <div className="question-editor-grid">
-        {(!supabase || (selectedDraft && draftStatus === "draft")) && <form className="question-form" onSubmit={saveQuestion} onChange={markFormDirty} onClick={(event) => {
+        {(!supabase || (selectedDraft && draftStatus === "draft" && !loading)) && <form className="question-form" onSubmit={saveQuestion} onChange={markFormDirty} onClick={(event) => {
           const button = (event.target as HTMLElement).closest("button");
           if (button?.type === "button" && !button.hasAttribute("data-dirty-ignore")) markFormDirty();
         }}>
@@ -237,6 +246,7 @@ export function QuestionEditor({ selectedDraft, onUnsavedChangesChange }: {
           <div className="question-meta-fields">
             <label className="field-label">БАЛИ<input type="number" min={LIMITS.points.min} max={LIMITS.points.max} step="0.01" value={points} onChange={(event) => setPoints(event.target.value)} /></label>
             <label className="field-label">ЧАС, СЕК. — НЕОБОВ’ЯЗКОВО<input type="number" min={LIMITS.timeLimitSeconds.min} max={LIMITS.timeLimitSeconds.max} step="1" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} /></label>
+            {isPool && <label className="field-label">РІВЕНЬ СКЛАДНОСТІ<select required value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>{[1,2,3,4,5].map((value) => <option key={value} value={value}>Рівень {value}</option>)}</select></label>}
           </div>
           {type === "true_false" && <fieldset className="question-fieldset"><legend>ПРАВИЛЬНА ВІДПОВІДЬ</legend>{([true, false] as const).map((value) => <label key={String(value)}><input type="radio" name="boolean-answer" checked={correctBoolean === value} onChange={() => setCorrectBoolean(value)} />{value ? "Так" : "Ні"}</label>)}</fieldset>}
           {(type === "single_choice" || type === "multiple_choice") && <fieldset className="question-fieldset"><legend>ВАРІАНТИ ТА ПРАВИЛЬНА ВІДПОВІДЬ</legend>

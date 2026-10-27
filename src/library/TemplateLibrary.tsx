@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AssessmentMode } from "../../contracts/api";
+import type { AssessmentMode, AssessmentSettings, FunctionContracts } from "../../contracts/api";
 import type { AssessmentDraft, Subject } from "../domain";
 import { assessmentDraftStorageKey, migrateAssessmentDrafts } from "../domain";
 import type { supabase } from "../lib/supabase";
 import { AssignmentManager } from "../assignments/AssignmentManager";
 import { MultiplicationGeneratorDialog } from "./MultiplicationGeneratorDialog";
+import { MultiplicationBankDialog } from "./MultiplicationBankDialog";
+import { BankQuestionManager } from "./BankQuestionManager";
 
 type Client = NonNullable<typeof supabase>;
 type SubjectRow = { id: string; code: string; name: string; icon: string };
@@ -17,6 +19,7 @@ type TemplateRow = {
   mode: AssessmentMode;
   created_at: string;
   updated_at: string;
+  settings?: AssessmentSettings | null;
 };
 
 interface Props {
@@ -26,7 +29,7 @@ interface Props {
   subjectCode: string;
   grade: number;
   onGradeChange: (grade: number) => void;
-  onOpen: (draft: { id: string; title: string }) => void;
+  onOpen: (draft: { id: string; title: string }, questionId?: string) => void;
   onPublished: () => void;
   editorHasUnsavedChanges: boolean;
 }
@@ -49,6 +52,8 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
   const [renameValue, setRenameValue] = useState("");
   const [managingTemplate, setManagingTemplate] = useState<TemplateRow | null>(null);
   const [generatorOpen, setGeneratorOpen] = useState(false);
+  const [bankDialogOpen, setBankDialogOpen] = useState(false);
+  const [bankTemplate, setBankTemplate] = useState<TemplateRow | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -56,7 +61,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
     try {
       const [templateResult, subjectResult] = await Promise.all([
         client.from("assessment_templates")
-          .select("id,title,subject_id,grade_level,status,mode,created_at,updated_at")
+          .select("id,title,subject_id,grade_level,status,mode,settings,created_at,updated_at")
           .eq("teacher_id", teacherId)
           .order("updated_at", { ascending: false }),
         client.from("subjects").select("id,code,name,icon").eq("active", true),
@@ -186,7 +191,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
       <label className="field-label">НАЗВА НОВОЇ ЧЕРНЕТКИ<input value={newTitle} maxLength={180} onChange={(event) => setNewTitle(event.target.value)} placeholder="Наприклад, Таблиця множення" /></label>
       <button className="primary-button" type="submit" disabled={busy}>{busy ? "Зберігаємо…" : "＋ Створити чернетку"}</button>
     </form>
-    {mathematicsSubject && subjectCode === "mathematics" && <button className="multiplication-generator-trigger" type="button" onClick={() => setGeneratorOpen(true)} disabled={busy}>✦ Згенерувати тест з множення</button>}
+    {mathematicsSubject && subjectCode === "mathematics" && <div className="multiplication-generator-actions"><button className="multiplication-generator-trigger" type="button" onClick={() => setGeneratorOpen(true)} disabled={busy}>✦ Згенерувати тест з множення</button><button className="multiplication-generator-trigger bank-trigger" type="button" onClick={() => setBankDialogOpen(true)} disabled={busy}>▦ Створити тест BIG таблиця множення</button></div>}
     <div className="template-actions"><button className="text-button" type="button" onClick={() => void importLocalDrafts()} disabled={busy}>Імпортувати локальні чернетки</button><button className="text-button" type="button" onClick={() => void reload()} disabled={loading || busy}>Оновити список</button></div>
     <p className="template-clone-note">Клонування опублікованих тестів поки недоступне — серверна функція ще не підключена.</p>
     {error && <p className="template-error" role="alert">{error}</p>}{notice && <p className="template-notice" role="status">{notice}</p>}
@@ -199,7 +204,7 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
           <small>{subject.name} <i>·</i> {item.grade_level} клас <i>·</i> {statusNames[item.status] ?? item.status} <i>·</i> {new Date(item.updated_at || item.created_at).toLocaleDateString("uk-UA")}</small>
         </div>
         {item.status === "draft" ? <div className="template-row-actions">
-          {renamingId === item.id ? <><button type="button" disabled={busy} onClick={() => void renameDraft(item.id)}>Зберегти назву</button><button type="button" onClick={() => setRenamingId(null)}>Скасувати</button></> : <><button type="button" onClick={() => { setRenamingId(item.id); setRenameValue(item.title); }}>Перейменувати</button><button type="button" onClick={() => onOpen({ id: item.id, title: item.title })}>Відкрити</button><button type="button" className="template-publish-button" onClick={() => setManagingTemplate(item)}>Опублікувати</button><button type="button" className="danger" disabled={busy} onClick={() => void deleteDraft(item)}>Видалити</button></>}
+          {renamingId === item.id ? <><button type="button" disabled={busy} onClick={() => void renameDraft(item.id)}>Зберегти назву</button><button type="button" onClick={() => setRenamingId(null)}>Скасувати</button></> : <><button type="button" onClick={() => { setRenamingId(item.id); setRenameValue(item.title); }}>Перейменувати</button><button type="button" onClick={() => onOpen({ id: item.id, title: item.title })}>Відкрити</button>{item.settings?.pool && <button type="button" onClick={() => setBankTemplate(item)}>Редагувати банк</button>}<button type="button" className="template-publish-button" onClick={() => setManagingTemplate(item)}>Опублікувати</button><button type="button" className="danger" disabled={busy} onClick={() => void deleteDraft(item)}>Видалити</button></>}
         </div> : item.status === "published" ? <div className="template-row-actions"><button type="button" onClick={() => onOpen({ id: item.id, title: item.title })}>Переглянути</button><button type="button" className="template-publish-button" onClick={() => setManagingTemplate(item)}>Керувати призначеннями</button></div> : <button className="template-clone-button" type="button" disabled title="Клонування стане доступним після підключення clone-assessment">Клонувати · недоступно</button>}
       </article>;
     })}</div> : <div className="empty-state"><span>✎</span><strong>Для цього предмета й класу тестів ще немає</strong><p>Створіть чернетку або імпортуйте збережені локальні чернетки.</p></div>}
@@ -214,6 +219,30 @@ export function TemplateLibrary({ client, teacherId, subjects, subjectCode, grad
         setManagingTemplate((current) => current?.id === managingTemplate.id ? { ...current, status: "published" } : current);
         void reload();
         onPublished();
+      }}
+    />}
+    {bankDialogOpen && mathematicsSubject && <MultiplicationBankDialog
+      client={client}
+      subject={mathematicsSubject}
+      grade={grade}
+      onClose={() => setBankDialogOpen(false)}
+      onCreated={async (data: FunctionContracts["generate-multiplication-bank"]["data"], requestedGrade: number) => {
+        setBankDialogOpen(false);
+        onGradeChange(requestedGrade);
+        setNotice(`BIG тест створено: ${data.bankSize} запитань у банку.`);
+        await reload();
+        onOpen({ id: data.templateId, title: data.title });
+      }}
+    />}
+    {bankTemplate && <BankQuestionManager
+      key={bankTemplate.id}
+      client={client}
+      template={bankTemplate}
+      onClose={() => setBankTemplate(null)}
+      onEditQuestion={(questionId) => {
+        if (editorHasUnsavedChanges && !window.confirm("У редакторі є незбережене запитання. Відкрити це питання й відкинути незбережені зміни?")) return;
+        onOpen({ id: bankTemplate.id, title: bankTemplate.title }, questionId);
+        setBankTemplate(null);
       }}
     />}
     {generatorOpen && mathematicsSubject && <MultiplicationGeneratorDialog

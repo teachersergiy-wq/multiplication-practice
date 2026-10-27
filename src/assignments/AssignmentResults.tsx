@@ -113,7 +113,7 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
 
       {selectedAttempt && <section className="teacher-attempt-detail" aria-labelledby="teacher-attempt-detail-title">
         <div className="teacher-attempt-detail-heading"><div><h5 id="teacher-attempt-detail-title">Деталі спроби · {selectedStudent?.name ?? "Учень"}</h5><p>{dateTime(selectedAttempt.finished_at)} · {formatScore(selectedAttempt.score)} з {formatScore(selectedAttempt.max_score)} балів · {formatElapsed(selectedAttempt.elapsed_ms)}</p></div><button type="button" onClick={() => setSelectedAttemptId("")}>Закрити деталі</button></div>
-        <ol>{data.questions.map((question, index) => {
+        <ol>{(summary.questionsByAttempt.get(selectedAttempt.id) ?? data.questions).map((question, index) => {
           const response = responseByQuestion.get(question.id);
           const correct = response ? response.is_correct === true : false;
           const partial = !correct && Number(response?.awarded_points ?? 0) > 0;

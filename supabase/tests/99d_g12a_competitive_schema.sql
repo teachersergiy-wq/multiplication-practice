@@ -12,7 +12,6 @@ declare
   class_b uuid;
   run_a uuid;
   run_b uuid;
-  n integer;
 begin
   perform tests.ensure_auth_user(teacher_a, 'g12a-ta@test.invalid');
   perform tests.ensure_auth_user(teacher_b, 'g12a-tb@test.invalid');
@@ -33,7 +32,6 @@ begin
   insert into public.class_teachers (class_id, teacher_id) values (class_a, teacher_a), (class_b, teacher_b);
   insert into public.class_students (class_id, student_id) values (class_a, student_a), (class_b, student_b);
 
-  -- Seed topic must exist from migration
   perform tests.ok(
     exists (select 1 from public.competitive_topics where code = 'multiplication_table' and active),
     'seed topic multiplication_table active'
@@ -44,7 +42,6 @@ begin
     'multiplication_table levelCount = 6'
   );
 
-  -- Insert runs as table owner (postgres) — clients have no write policies
   insert into public.competitive_runs (id, student_id, topic_code, level_number, status, score, started_at)
   values
     (gen_random_uuid(), student_a, 'multiplication_table', 6, 'in_progress', 0, now())
@@ -73,19 +70,19 @@ begin
 end;
 $$;
 
--- anon: no select on competitive tables
+-- anon: no table privilege → must error (not empty result)
 select tests.set_jwt('00000000-0000-4000-8000-000000000099'::uuid, 'anon');
-select tests.ok(
-  not exists (select 1 from public.competitive_topics limit 1),
-  'anon cannot read competitive_topics'
+select tests.throws(
+  'select 1 from public.competitive_topics limit 1',
+  'anon cannot select competitive_topics'
 );
-select tests.ok(
-  not exists (select 1 from public.competitive_runs limit 1),
-  'anon cannot read competitive_runs'
+select tests.throws(
+  'select 1 from public.competitive_runs limit 1',
+  'anon cannot select competitive_runs'
 );
-select tests.ok(
-  not exists (select 1 from public.competitive_best limit 1),
-  'anon cannot read competitive_best'
+select tests.throws(
+  'select 1 from public.competitive_best limit 1',
+  'anon cannot select competitive_best'
 );
 
 -- student A: topics + own run/best; not student B
@@ -123,7 +120,6 @@ select tests.ok(
   'student does not see other best'
 );
 
--- student cannot insert run (no policy)
 select tests.throws(
   format(
     'insert into public.competitive_runs (student_id, topic_code, level_number) values (%L, ''multiplication_table'', 1)',
@@ -159,7 +155,7 @@ select tests.throws(
   'authenticated cannot read private.competitive_run_state'
 );
 
--- privilege catalogue: authenticated has no INSERT on competitive_*
+-- privilege catalogue
 select tests.ok(
   not has_table_privilege('authenticated', 'public.competitive_runs', 'INSERT'),
   'authenticated lacks INSERT on competitive_runs'

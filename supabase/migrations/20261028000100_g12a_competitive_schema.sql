@@ -75,6 +75,7 @@ create table if not exists public.competitive_best (
 
 -- ---------------------------------------------------------------------------
 -- Seed: multiplication_table (grades 3–11). Tunables in settings only.
+-- Super timing (owner 2026-10-28): 8.0s start, -0.3s / 5 answers, floor 3.5s.
 -- ---------------------------------------------------------------------------
 
 insert into public.competitive_topics (code, title, subject, grade_min, grade_max, generator, active, settings)
@@ -96,10 +97,10 @@ values (
       jsonb_build_object('levelNumber', 5, 'questionCount', 20, 'secondsPerQuestion', 12, 'passPercent', 80)
     ),
     'graceMs', 1000,
-    'startLimitMs', 7000,
-    'stepMs', 500,
+    'startLimitMs', 8000,
+    'stepMs', 300,
     'stepEvery', 5,
-    'minLimitMs', 1000,
+    'minLimitMs', 3500,
     'minAnswerMs', 300,
     'dailyRunLimit', 200,
     'leaderboardSize', 10,

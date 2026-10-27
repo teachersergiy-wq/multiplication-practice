@@ -213,7 +213,7 @@
 | Функція | Роль | Запит → відповідь |
 |---|---|---|
 | `list-competitive-topics` | student | `{}` → `{ topics: CompetitiveTopic[] }` (з `myBest`) |
-| `start-competitive-run` | student | `{ topicCode }` → `{ runId, question, limitMs, serverNow }` (лише якщо попередні рівні теми пройдено, інакше `conflict`) |
+| `start-competitive-run` | student | `{ topicCode, levelNumber }` → `{ runId, question, limitMs, serverNow }` (рівень має бути відкритий, інакше `conflict`) |
 | `submit-competitive-answer` | student | `{ runId, questionId, response }` → або `{ finished: false, correct: true, question, limitMs, score }`, або `{ finished: true, result: CompetitiveRunResult }` |
 | `publish-competitive-result` | student | `{ runId, visibility: "nickname" \| "anonymous" \| "name" \| "none" }` → `{ published: boolean }` |
 | `get-leaderboard` | student, teacher | `{ topicCode, scope, limit ≤ 50 }` → `{ rows: LeaderboardRow[] }` |

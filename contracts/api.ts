@@ -605,11 +605,23 @@ export type StoredAnswerKeyV1 =
 export type LeaderboardScope = "class" | "school" | "school_year" | "absolute";
 export type ResultVisibility = "none" | "nickname" | "anonymous" | "name";
 
+export interface CompetitiveLevelInfo {
+  levelNumber: number;
+  /** null for the last, endless level ("Супер рівень"). */
+  questionCount: number | null;
+  /** Seconds per question on finite levels; null on the endless level (7 s shrinking to 1 s). */
+  secondsPerQuestion: number | null;
+  /** A level opens once the previous one is passed. */
+  unlocked: boolean;
+  passed: boolean;
+  isEndless: boolean;
+}
 export interface CompetitiveTopic {
   code: string;
   title: string;
   gradeMin: number;
   gradeMax: number;
+  levels: CompetitiveLevelInfo[];
   myBest: { score: number; durationMs: number; attemptCount: number } | null;
 }
 export interface ListCompetitiveTopicsRequest {}
@@ -624,6 +636,8 @@ export interface CompetitiveQuestion {
 }
 export interface StartCompetitiveRunRequest {
   topicCode: string;
+  /** Must be unlocked; the endless last level is the one ranked. */
+  levelNumber: number;
 }
 export interface StartCompetitiveRunData {
   runId: Uuid;

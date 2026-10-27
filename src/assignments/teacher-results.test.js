@@ -1,7 +1,7 @@
 import test from "node:test";
 import "../library/bank-api.test.js";
 import assert from "node:assert/strict";
-import { formatElapsed, formatStudentAnswer, loadAssignmentResults, statusLabel, summarizeAssignmentResults } from "./teacher-results.js";
+import { formatElapsed, formatQuestionSeconds, formatStudentAnswer, loadAssignmentResults, loadAttemptTiming, prepareAttemptTiming, statusLabel, summarizeAssignmentResults } from "./teacher-results.js";
 
 function mockClient(responses) {
   const calls = [];

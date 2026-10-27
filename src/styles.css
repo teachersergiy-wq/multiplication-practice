@@ -1,3 +1,4 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 
-/* PLACEHOLDER - will replace */
+/* Restored - partial start; full restore via blob reference preferred */
+.student-shell{box-sizing:border-box;min-height:100dvh;width:100%;max-width:100%;overflow-x:hidden;padding:env(safe-area-inset-top) max(20px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(20px,env(safe-area-inset-left));background:#fbfaf8;color:#393446;font-family:'DM Sans',sans-serif}

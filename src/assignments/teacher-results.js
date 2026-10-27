@@ -180,3 +180,67 @@ export function statusLabel(status) {
   if (status === "abandoned") return "Спробу перервано";
   return "Не починав(ла)";
 }
+
+function timingSeconds(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const seconds = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
+export function formatQuestionSeconds(value) {
+  const seconds = timingSeconds(value);
+  if (seconds === null) return "—";
+  const rounded = Math.round((seconds + Number.EPSILON) * 10) / 10;
+  return `${rounded.toLocaleString("uk-UA", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} с`;
+}
+
+export function prepareAttemptTiming(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const questions = (Array.isArray(value.questions) ? value.questions : [])
+    .map((question, index) => ({
+      questionId: typeof question?.questionId === "string" ? question.questionId : "",
+      position: Number.isFinite(Number(question?.position)) ? Number(question.position) : index + 1,
+      answerSeconds: timingSeconds(question?.answerSeconds),
+      isCorrect: typeof question?.isCorrect === "boolean" ? question.isCorrect : null,
+      originalIndex: index,
+    }))
+    .filter((question) => question.questionId.length > 0)
+    .sort((left, right) => left.position - right.position || left.originalIndex - right.originalIndex)
+    .map(({ originalIndex, ...question }) => question);
+
+  const hasAnswers = questions.some((question) => question.answerSeconds !== null);
+  const summary = value.summary && typeof value.summary === "object" ? value.summary : {};
+  return {
+    attemptId: typeof value.attemptId === "string" ? value.attemptId : "",
+    questions,
+    summary: {
+      avgSeconds: hasAnswers ? timingSeconds(summary.avgSeconds) : null,
+      medianSeconds: hasAnswers ? timingSeconds(summary.medianSeconds) : null,
+      minSeconds: hasAnswers ? timingSeconds(summary.minSeconds) : null,
+      maxSeconds: hasAnswers ? timingSeconds(summary.maxSeconds) : null,
+    },
+  };
+}
+
+export async function loadAttemptTiming(client, { teacherId, attemptId }) {
+  if (!client || typeof client.rpc !== "function" || !teacherId || !attemptId) {
+    return { ok: false, reason: "unavailable" };
+  }
+
+  try {
+    const { data, error } = await client.rpc("api_teacher_attempt_timing", {
+      p_teacher_id: teacherId,
+      p_attempt_id: attemptId,
+    });
+    if (error) {
+      const message = [error.message, error.details, error.hint].filter(Boolean).join(" ");
+      return { ok: false, reason: /not_found/i.test(message) ? "not_found" : "unavailable" };
+    }
+    const prepared = prepareAttemptTiming(data);
+    return prepared ? { ok: true, data: prepared } : { ok: false, reason: "unavailable" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: /not_found/i.test(message) ? "not_found" : "unavailable" };
+  }
+}

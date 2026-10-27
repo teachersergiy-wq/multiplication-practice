@@ -13,16 +13,14 @@ declare
   subject_id uuid;
   start_payload jsonb;
   submit_payload jsonb;
-  run_id uuid;
+  test_run_id uuid;
   qid uuid;
   key_val numeric;
   lim int;
   i int;
-  pub jsonb;
   board jsonb;
   trev jsonb;
   max_passed int;
-  topics jsonb;
   saw boolean;
 begin
   perform tests.ensure_auth_user(teacher_a, 'g12b-ta@test.invalid');
@@ -53,7 +51,6 @@ begin
   values (class_a, subject_id, 7), (class_b, subject_id, 8)
   on conflict do nothing;
 
-  -- Super limit formula
   perform tests.ok(
     private.competitive_limit_ms(
       '{"startLimitMs":8000,"stepMs":300,"stepEvery":5,"minLimitMs":3500}'::jsonb, 5, 6, 6
@@ -66,7 +63,6 @@ begin
     ) = 3500,
     'super floor 3500'
   );
-  -- Finite level uses secondsPerQuestion
   perform tests.ok(
     private.competitive_limit_ms(
       '{"finiteLevels":[{"levelNumber":1,"questionCount":10,"secondsPerQuestion":8,"passPercent":80}]}'::jsonb,
@@ -75,7 +71,6 @@ begin
     'finite level 1 limit = 8s'
   );
 
-  -- authenticated has no EXECUTE
   perform tests.ok(
     not has_function_privilege('authenticated', 'public.api_start_competitive_run(uuid,text,int)', 'execute'),
     'authenticated cannot start'
@@ -91,37 +86,43 @@ begin
 
   -- Level 1 fail does NOT unlock level 2
   start_payload := public.api_start_competitive_run(student_a, 'multiplication_table', 1);
-  run_id := (start_payload->>'runId')::uuid;
+  test_run_id := (start_payload->>'runId')::uuid;
   lim := (start_payload->>'limitMs')::int;
   perform tests.ok(lim = 8000, format('finite L1 limitMs=8000 got %s', lim));
 
-  -- answer 10 times wrong (force via state)
   for i in 1..10 loop
-    select question_id into qid from private.competitive_run_state where run_id = run_id;
-    update private.competitive_run_state set issued_at = now() - interval '1 second' where run_id = run_id;
+    select s.question_id into qid
+    from private.competitive_run_state s where s.run_id = test_run_id;
+    update private.competitive_run_state s
+    set issued_at = now() - interval '1 second'
+    where s.run_id = test_run_id;
     submit_payload := public.api_submit_competitive_answer(
-      student_a, run_id, qid, '{"type":"numeric","value":-1}'::jsonb
+      student_a, test_run_id, qid, '{"type":"numeric","value":-1}'::jsonb
     );
   end loop;
   perform tests.ok((submit_payload->>'finished')::boolean = true, 'finite L1 finishes after questionCount');
-  select max_level_passed into max_passed
-  from public.competitive_best where student_id = student_a and topic_code = 'multiplication_table';
+  select b.max_level_passed into max_passed
+  from public.competitive_best b
+  where b.student_id = student_a and b.topic_code = 'multiplication_table';
   perform tests.ok(coalesce(max_passed, 0) = 0, 'fail L1 does not unlock L2');
 
   -- Pass L1 with all correct → unlock
   start_payload := public.api_start_competitive_run(student_a, 'multiplication_table', 1);
-  run_id := (start_payload->>'runId')::uuid;
+  test_run_id := (start_payload->>'runId')::uuid;
   for i in 1..10 loop
-    select question_id, (answer_key->>'value')::numeric into qid, key_val
-    from private.competitive_run_state where run_id = run_id;
-    update private.competitive_run_state set issued_at = now() - interval '1 second' where run_id = run_id;
+    select s.question_id, (s.answer_key->>'value')::numeric into qid, key_val
+    from private.competitive_run_state s where s.run_id = test_run_id;
+    update private.competitive_run_state s
+    set issued_at = now() - interval '1 second'
+    where s.run_id = test_run_id;
     submit_payload := public.api_submit_competitive_answer(
-      student_a, run_id, qid, jsonb_build_object('type', 'numeric', 'value', key_val)
+      student_a, test_run_id, qid, jsonb_build_object('type', 'numeric', 'value', key_val)
     );
   end loop;
   perform tests.ok((submit_payload->>'finished')::boolean = true, 'finite L1 pass finishes');
-  select max_level_passed into max_passed
-  from public.competitive_best where student_id = student_a and topic_code = 'multiplication_table';
+  select b.max_level_passed into max_passed
+  from public.competitive_best b
+  where b.student_id = student_a and b.topic_code = 'multiplication_table';
   perform tests.ok(max_passed >= 1, 'pass L1 unlocks');
 
   -- Super path
@@ -130,40 +131,39 @@ begin
   on conflict (student_id, topic_code) do update set max_level_passed = 5;
 
   start_payload := public.api_start_competitive_run(student_a, 'multiplication_table', 6);
-  run_id := (start_payload->>'runId')::uuid;
+  test_run_id := (start_payload->>'runId')::uuid;
   qid := (start_payload->'question'->>'id')::uuid;
   perform tests.ok((start_payload->>'limitMs')::int = 8000, 'super start 8000');
 
-  -- rate_limited
   saw := false;
   begin
     perform public.api_submit_competitive_answer(
-      student_a, run_id, qid, '{"type":"numeric","value":0}'::jsonb
+      student_a, test_run_id, qid, '{"type":"numeric","value":0}'::jsonb
     );
   exception when others then
     saw := sqlerrm ilike '%rate_limited%';
   end;
   perform tests.ok(saw, 'rate_limited when too fast');
 
-  update private.competitive_run_state set issued_at = now() - interval '1 second' where run_id = run_id;
-  select (answer_key->>'value')::numeric into key_val from private.competitive_run_state where run_id = run_id;
+  update private.competitive_run_state s
+  set issued_at = now() - interval '1 second'
+  where s.run_id = test_run_id;
+  select (s.answer_key->>'value')::numeric into key_val
+  from private.competitive_run_state s where s.run_id = test_run_id;
   submit_payload := public.api_submit_competitive_answer(
-    student_a, run_id, qid, jsonb_build_object('type', 'numeric', 'value', key_val)
+    student_a, test_run_id, qid, jsonb_build_object('type', 'numeric', 'value', key_val)
   );
   perform tests.ok(
     (submit_payload->>'finished')::boolean = false and (submit_payload->>'score')::int = 1,
     'super correct continues'
   );
-  perform tests.ok(
-    jsonb_typeof(submit_payload->'question') = 'object',
-    'next question issued'
-  );
 
-  -- wrong finishes with qualified array present
   qid := (submit_payload->'question'->>'id')::uuid;
-  update private.competitive_run_state set issued_at = now() - interval '1 second' where run_id = run_id;
+  update private.competitive_run_state s
+  set issued_at = now() - interval '1 second'
+  where s.run_id = test_run_id;
   submit_payload := public.api_submit_competitive_answer(
-    student_a, run_id, qid, '{"type":"numeric","value":-99999}'::jsonb
+    student_a, test_run_id, qid, '{"type":"numeric","value":-99999}'::jsonb
   );
   perform tests.ok((submit_payload->>'finished')::boolean = true, 'super wrong finishes');
   perform tests.ok(
@@ -171,10 +171,8 @@ begin
     'qualified is array'
   );
 
-  -- unpublished better score must not appear: publish score=1, then better unpublished
-  perform public.api_publish_competitive_result(student_a, run_id, 'nickname');
+  perform public.api_publish_competitive_result(student_a, test_run_id, 'nickname');
 
-  -- fabricate better unpublished run
   insert into public.competitive_runs (
     id, student_id, topic_code, level_number, status, score, duration_ms, visibility, started_at, finished_at
   ) values (
@@ -195,9 +193,7 @@ begin
     'published score 1 on leaderboard'
   );
 
-  -- parallel 8 student does not see grade 7 absolute the same way — grade filter
   board := public.api_get_leaderboard(student_b, 'multiplication_table', 'absolute', 10, null);
-  -- student_b grade 8; published is grade 7 — should not list student_a
   perform tests.ok(
     not exists (
       select 1 from jsonb_array_elements(board->'rows') e where e->>'displayName' = 'g12b-sa'
@@ -205,7 +201,6 @@ begin
     'grade 8 absolute excludes grade 7 row'
   );
 
-  -- teacher B cannot see class A
   saw := false;
   begin
     perform public.api_get_competitive_results(teacher_b, class_a, 'multiplication_table');

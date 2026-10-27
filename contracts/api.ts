@@ -628,7 +628,7 @@ export interface StartCompetitiveRunRequest {
 export interface StartCompetitiveRunData {
   runId: Uuid;
   question: CompetitiveQuestion;
-  /** Answer time limit for this question, ms (7000 down to 300). */
+  /** Answer time limit for this question, ms (7000 down to 1000). Answers earlier than 300 ms after issue are rejected. */
   limitMs: number;
   serverNow: IsoDateTime;
 }

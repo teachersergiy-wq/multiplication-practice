@@ -609,7 +609,7 @@ export interface CompetitiveLevelInfo {
   levelNumber: number;
   /** null for the last, endless level ("Супер рівень"). */
   questionCount: number | null;
-  /** Seconds per question on finite levels; null on the endless level (7 s shrinking to 1 s). */
+  /** Seconds per question on finite levels; null on the endless level (8 s shrinking to 3.5 s). */
   secondsPerQuestion: number | null;
   /** A level opens once the previous one is passed. */
   unlocked: boolean;
@@ -642,7 +642,7 @@ export interface StartCompetitiveRunRequest {
 export interface StartCompetitiveRunData {
   runId: Uuid;
   question: CompetitiveQuestion;
-  /** Answer time limit for this question, ms (7000 down to 1000). Answers earlier than 300 ms after issue are rejected. */
+  /** Answer time limit for this question, ms (8000 down to 3500). Answers earlier than 300 ms after issue are rejected. */
   limitMs: number;
   serverNow: IsoDateTime;
 }

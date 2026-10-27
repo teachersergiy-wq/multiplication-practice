@@ -1,7 +1,7 @@
 import test from "node:test";
 import "../library/bank-api.test.js";
 import assert from "node:assert/strict";
-import { formatElapsed, formatStudentAnswer, loadAssignmentResults, statusLabel, summarizeAssignmentResults } from "./teacher-results.js";
+import { formatElapsed, formatQuestionSeconds, formatStudentAnswer, loadAssignmentResults, loadAttemptTiming, prepareAttemptTiming, statusLabel, summarizeAssignmentResults } from "./teacher-results.js";
 
 function mockClient(responses) {
   const calls = [];
@@ -107,4 +107,80 @@ test("teacher result details count only questions sampled for each attempt", asy
   assert.equal(loaded.ok, true);
   assert.deepEqual(loaded.data.questionsByAttempt.get("sampled").map((question) => question.id), ["q2"]);
   assert.deepEqual(summarizeAssignmentResults(loaded.data).mostCommonErrors, []);
+});
+
+test("question timing formatter rounds to one decimal and handles null values", () => {
+  assert.equal(formatQuestionSeconds(4.25), "4,3 с");
+  assert.equal(formatQuestionSeconds(3.181), "3,2 с");
+  assert.equal(formatQuestionSeconds(0), "0,0 с");
+  assert.equal(formatQuestionSeconds(null), "—");
+  assert.equal(formatQuestionSeconds(undefined), "—");
+  assert.equal(formatQuestionSeconds("not-a-number"), "—");
+});
+
+test("attempt timing preparation sorts by position and preserves nullable correctness", () => {
+  const prepared = prepareAttemptTiming({
+    attemptId: "timed-attempt",
+    questions: [
+      { questionId: "q3", position: 3, answerSeconds: null, isCorrect: null },
+      { questionId: "q1", position: 1, answerSeconds: 4.25, isCorrect: true },
+      { questionId: "q2", position: 2, answerSeconds: "3.18", isCorrect: false },
+    ],
+    summary: { avgSeconds: 3.715, medianSeconds: 3.18, minSeconds: 3.18, maxSeconds: 4.25 },
+  });
+  assert.ok(prepared);
+  assert.deepEqual(prepared.questions.map((question) => question.questionId), ["q1", "q2", "q3"]);
+  assert.equal(prepared.questions[2].answerSeconds, null);
+  assert.equal(prepared.questions[2].isCorrect, null);
+  assert.deepEqual(prepared.summary, { avgSeconds: 3.715, medianSeconds: 3.18, minSeconds: 3.18, maxSeconds: 4.25 });
+});
+
+test("empty attempt timing has blank summary values", () => {
+  const prepared = prepareAttemptTiming({
+    attemptId: "empty-attempt",
+    questions: [],
+    summary: { avgSeconds: 9, medianSeconds: 9, minSeconds: 9, maxSeconds: 9 },
+  });
+  assert.deepEqual(prepared, {
+    attemptId: "empty-attempt",
+    questions: [],
+    summary: { avgSeconds: null, medianSeconds: null, minSeconds: null, maxSeconds: null },
+  });
+  const unanswered = prepareAttemptTiming({
+    attemptId: "unanswered-attempt",
+    questions: [{ questionId: "q1", position: 1, answerSeconds: null, isCorrect: null }],
+    summary: { avgSeconds: 9, medianSeconds: 9, minSeconds: 9, maxSeconds: 9 },
+  });
+  assert.deepEqual(unanswered.summary, { avgSeconds: null, medianSeconds: null, minSeconds: null, maxSeconds: null });
+});
+
+test("attempt timing RPC uses teacher and attempt ids and prepares response", async () => {
+  const calls = [];
+  const client = {
+    async rpc(name, params) {
+      calls.push({ name, params });
+      return {
+        error: null,
+        data: {
+          attemptId: "attempt-a",
+          questions: [{ questionId: "q1", position: 1, answerSeconds: 4.2, isCorrect: true }],
+          summary: { avgSeconds: 4.2, medianSeconds: 4.2, minSeconds: 4.2, maxSeconds: 4.2 },
+        },
+      };
+    },
+  };
+  const loaded = await loadAttemptTiming(client, { teacherId: "teacher-a", attemptId: "attempt-a" });
+  assert.deepEqual(calls, [{
+    name: "api_teacher_attempt_timing",
+    params: { p_teacher_id: "teacher-a", p_attempt_id: "attempt-a" },
+  }]);
+  assert.equal(loaded.ok, true);
+  if (loaded.ok) assert.equal(loaded.data.questions[0].questionId, "q1");
+});
+
+test("attempt timing hides errors for attempts that are not available to this teacher", async () => {
+  const loaded = await loadAttemptTiming({
+    async rpc() { return { data: null, error: { message: "not_found: attempt unavailable" } }; },
+  }, { teacherId: "teacher-a", attemptId: "other-teachers-attempt" });
+  assert.deepEqual(loaded, { ok: false, reason: "not_found" });
 });

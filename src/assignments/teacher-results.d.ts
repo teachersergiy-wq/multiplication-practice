@@ -53,3 +53,30 @@ export function formatStudentAnswer(question: TeacherResultQuestion, response: T
 export function promptText(prompt: unknown): string;
 export function formatElapsed(elapsedMs: number | null | undefined): string;
 export function statusLabel(status: string): string;
+
+export interface TeacherQuestionTiming {
+  questionId: string;
+  position: number;
+  answerSeconds: number | null;
+  isCorrect: boolean | null;
+}
+
+export interface TeacherAttemptTimingSummary {
+  avgSeconds: number | null;
+  medianSeconds: number | null;
+  minSeconds: number | null;
+  maxSeconds: number | null;
+}
+
+export interface TeacherAttemptTiming {
+  attemptId: string;
+  questions: TeacherQuestionTiming[];
+  summary: TeacherAttemptTimingSummary;
+}
+
+export function formatQuestionSeconds(value: number | string | null | undefined): string;
+export function prepareAttemptTiming(value: unknown): TeacherAttemptTiming | null;
+export function loadAttemptTiming(client: unknown, request: { teacherId: string; attemptId: string }): Promise<
+  | { ok: true; data: TeacherAttemptTiming }
+  | { ok: false; reason: "not_found" | "unavailable" }
+>;

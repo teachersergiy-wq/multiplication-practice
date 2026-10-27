@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AssignmentResultData } from "./teacher-results.js";
+import type { AssignmentResultData, TeacherAttemptTiming } from "./teacher-results.js";
 import { formatScore, teacherQuestionScoreLabel } from "../scoring.js";
 import {
   formatElapsed,
+  formatQuestionSeconds,
   formatStudentAnswer,
+  loadAttemptTiming,
   loadAssignmentResults,
   promptText,
   statusLabel,
@@ -13,6 +15,7 @@ import {
 
 interface Props {
   client: SupabaseClient;
+  teacherId: string;
   assignmentId: string;
   classId: string;
   className: string;
@@ -20,17 +23,22 @@ interface Props {
   onClose: () => void;
 }
 
+type AttemptTimingState =
+  | { attemptId: string; status: "loading" | "not_found" | "error" }
+  | { attemptId: string; status: "ready"; data: TeacherAttemptTiming };
+
 function dateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("uk-UA", { dateStyle: "short", timeStyle: "short" });
 }
 
-export function AssignmentResults({ client, assignmentId, classId, className, templateId, onClose }: Props) {
+export function AssignmentResults({ client, teacherId, assignmentId, classId, className, templateId, onClose }: Props) {
   const [data, setData] = useState<AssignmentResultData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selectedAttemptId, setSelectedAttemptId] = useState("");
+  const [attemptTimingState, setAttemptTimingState] = useState<AttemptTimingState | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -54,11 +62,39 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
 
   useEffect(() => { void reload(); }, [reload]);
 
+  useEffect(() => {
+    if (!selectedAttemptId) {
+      setAttemptTimingState(null);
+      return;
+    }
+
+    let active = true;
+    setAttemptTimingState({ attemptId: selectedAttemptId, status: "loading" });
+    void loadAttemptTiming(client, { teacherId, attemptId: selectedAttemptId }).then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setAttemptTimingState({ attemptId: selectedAttemptId, status: "ready", data: result.data });
+      } else {
+        setAttemptTimingState({
+          attemptId: selectedAttemptId,
+          status: result.reason === "not_found" ? "not_found" : "error",
+        });
+      }
+    });
+
+    return () => { active = false; };
+  }, [client, teacherId, selectedAttemptId]);
+
   const summary = useMemo(() => data ? summarizeAssignmentResults(data) : null, [data]);
   const selectedAttempt = data?.attempts.find((attempt) => attempt.id === selectedAttemptId && attempt.status === "completed") ?? null;
   const selectedStudent = selectedAttempt && data ? data.students.find((student) => student.id === selectedAttempt.student_id) : null;
   const detailResponses = selectedAttempt && summary ? summary.responsesByAttempt.get(selectedAttempt.id) ?? [] : [];
   const responseByQuestion = new Map(detailResponses.map((response) => [response.question_id, response]));
+  const activeTimingState = attemptTimingState?.attemptId === selectedAttemptId ? attemptTimingState : null;
+  const timingByQuestionId = useMemo(
+    () => new Map(activeTimingState?.status === "ready" ? activeTimingState.data.questions.map((question) => [question.questionId, question]) : []),
+    [activeTimingState],
+  );
 
   return <section className="teacher-results" aria-labelledby={`results-title-${assignmentId}`}>
     <header className="teacher-results-heading">
@@ -112,7 +148,16 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
       </>}
 
       {selectedAttempt && <section className="teacher-attempt-detail" aria-labelledby="teacher-attempt-detail-title">
-        <div className="teacher-attempt-detail-heading"><div><h5 id="teacher-attempt-detail-title">Деталі спроби · {selectedStudent?.name ?? "Учень"}</h5><p>{dateTime(selectedAttempt.finished_at)} · {formatScore(selectedAttempt.score)} з {formatScore(selectedAttempt.max_score)} балів · {formatElapsed(selectedAttempt.elapsed_ms)}</p></div><button type="button" onClick={() => setSelectedAttemptId("")}>Закрити деталі</button></div>
+        <div className="teacher-attempt-detail-heading"><div><h5 id="teacher-attempt-detail-title">Деталі спроби · {selectedStudent?.name ?? "Учень"}</h5><p>{dateTime(selectedAttempt.finished_at)} · {formatScore(selectedAttempt.score)} з {formatScore(selectedAttempt.max_score)} балів · {formatElapsed(selectedAttempt.elapsed_ms)}</p></div><button type="button" aria-label={`Закрити деталі спроби ${selectedStudent?.name ?? "учня"}`} onClick={() => setSelectedAttemptId("")}>Закрити деталі</button></div>
+        {activeTimingState?.status === "loading" && <p className="teacher-results-state" role="status">Завантажуємо час на кожне запитання…</p>}
+        {activeTimingState?.status === "not_found" && <p className="teacher-results-state" role="status">Дані недоступні.</p>}
+        {activeTimingState?.status === "error" && <p className="teacher-results-state" role="status">Не вдалося завантажити час на запитання. Інші дані спроби доступні.</p>}
+        {activeTimingState?.status === "ready" && <div className="teacher-results-summary teacher-attempt-timing-summary" aria-label="Зведення часу на запитання">
+          <div><span>Середній час</span><strong>{formatQuestionSeconds(activeTimingState.data.summary.avgSeconds)}</strong></div>
+          <div><span>Медіана</span><strong>{formatQuestionSeconds(activeTimingState.data.summary.medianSeconds)}</strong></div>
+          <div><span>Найшвидше</span><strong>{formatQuestionSeconds(activeTimingState.data.summary.minSeconds)}</strong></div>
+          <div><span>Найповільніше</span><strong>{formatQuestionSeconds(activeTimingState.data.summary.maxSeconds)}</strong></div>
+        </div>}
         <ol>{(summary.questionsByAttempt.get(selectedAttempt.id) ?? data.questions).map((question, index) => {
           const response = responseByQuestion.get(question.id);
           const correct = response ? response.is_correct === true : false;
@@ -120,6 +165,7 @@ export function AssignmentResults({ client, assignmentId, classId, className, te
           return <li className={`teacher-attempt-question ${correct ? "correct" : partial ? "partial" : "incorrect"}`} key={question.id}>
             <div className="teacher-attempt-question-title"><strong>{index + 1}. {promptText(question.prompt)}</strong><span>{teacherQuestionScoreLabel(response?.is_correct ?? false, response?.awarded_points ?? 0, question.points)}</span></div>
             <p><span>Відповідь учня:</span> {formatStudentAnswer(question, response)}</p>
+            <p className="teacher-attempt-question-timing" aria-label={`Час на відповідь: ${formatQuestionSeconds(timingByQuestionId.get(question.id)?.answerSeconds)}`}><span>Час на відповідь:</span> {formatQuestionSeconds(timingByQuestionId.get(question.id)?.answerSeconds)}</p>
           </li>;
         })}</ol>
       </section>}

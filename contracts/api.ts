@@ -599,6 +599,123 @@ export type StoredAnswerKeyV1 =
   | { type: "short_answer"; accepted: string[]; caseSensitive: boolean };
 
 /* ------------------------------------------------------------------ */
+/* Competitive runs and leaderboards (PLANNED, docs/API_CONTRACT.md 7b) */
+/* ------------------------------------------------------------------ */
+
+export type LeaderboardScope = "class" | "school" | "school_year" | "absolute";
+export type ResultVisibility = "none" | "nickname" | "anonymous" | "name";
+
+export interface CompetitiveLevelInfo {
+  levelNumber: number;
+  /** null for the last, endless level ("Супер рівень"). */
+  questionCount: number | null;
+  /** Seconds per question on finite levels; null on the endless level (7 s shrinking to 1 s). */
+  secondsPerQuestion: number | null;
+  /** A level opens once the previous one is passed. */
+  unlocked: boolean;
+  passed: boolean;
+  isEndless: boolean;
+}
+export interface CompetitiveTopic {
+  code: string;
+  title: string;
+  gradeMin: number;
+  gradeMax: number;
+  levels: CompetitiveLevelInfo[];
+  myBest: { score: number; durationMs: number; attemptCount: number } | null;
+}
+export interface ListCompetitiveTopicsRequest {}
+export interface ListCompetitiveTopicsData {
+  topics: CompetitiveTopic[];
+}
+
+export interface CompetitiveQuestion {
+  id: Uuid;
+  promptText: string;
+  type: "numeric";
+}
+export interface StartCompetitiveRunRequest {
+  topicCode: string;
+  /** Must be unlocked; the endless last level is the one ranked. */
+  levelNumber: number;
+}
+export interface StartCompetitiveRunData {
+  runId: Uuid;
+  question: CompetitiveQuestion;
+  /** Answer time limit for this question, ms (7000 down to 1000). Answers earlier than 300 ms after issue are rejected. */
+  limitMs: number;
+  serverNow: IsoDateTime;
+}
+
+export interface QualifiedRanking {
+  scope: LeaderboardScope;
+  /** 1-based place among published results (top 10). */
+  rank: number;
+}
+export interface CompetitiveRunResult {
+  runId: Uuid;
+  score: number;
+  durationMs: number;
+  isPersonalBest: boolean;
+  /** Scopes where this result enters the top; the student then chooses visibility. */
+  qualified: QualifiedRanking[];
+}
+export interface SubmitCompetitiveAnswerRequest {
+  runId: Uuid;
+  questionId: Uuid;
+  response: { type: "numeric"; value: number };
+}
+export type SubmitCompetitiveAnswerData =
+  | { finished: false; correct: true; score: number; question: CompetitiveQuestion; limitMs: number }
+  | { finished: true; result: CompetitiveRunResult };
+
+export interface PublishCompetitiveResultRequest {
+  runId: Uuid;
+  /** "name" is accepted only for the "class" scope; "none" unpublishes. */
+  visibility: ResultVisibility;
+}
+export interface PublishCompetitiveResultData {
+  published: boolean;
+}
+
+export interface LeaderboardRow {
+  rank: number;
+  /** Nickname, "Учень" or (class scope only) full name. Never a student id or login. */
+  displayName: string;
+  score: number;
+  durationMs: number;
+  achievedAt: IsoDateTime;
+}
+export interface GetLeaderboardRequest {
+  topicCode: string;
+  scope: LeaderboardScope;
+  /** 1–50. */
+  limit: number;
+  /** Required for "class"/"school" when the caller is a teacher. */
+  classId?: Uuid;
+}
+export interface GetLeaderboardData {
+  rows: LeaderboardRow[];
+}
+
+export interface TeacherCompetitiveRow {
+  studentId: Uuid;
+  fullName: string;
+  attemptCount: number;
+  bestScore: number;
+  bestDurationMs: number;
+  lastRunAt: IsoDateTime;
+  lastRunDurationMs: number;
+}
+export interface GetCompetitiveResultsRequest {
+  classId: Uuid;
+  topicCode?: string;
+}
+export interface GetCompetitiveResultsData {
+  rows: TeacherCompetitiveRow[];
+}
+
+/* ------------------------------------------------------------------ */
 /* Function registry                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -628,6 +745,12 @@ export interface FunctionContracts {
   "start-attempt": { role: "student"; request: StartAttemptRequest; data: StartAttemptData };
   "submit-answer": { role: "student"; request: SubmitAnswerRequest; data: SubmitAnswerData };
   "finish-attempt": { role: "student"; request: FinishAttemptRequest; data: FinishAttemptData };
+  "list-competitive-topics": { role: "student"; request: ListCompetitiveTopicsRequest; data: ListCompetitiveTopicsData };
+  "start-competitive-run": { role: "student"; request: StartCompetitiveRunRequest; data: StartCompetitiveRunData };
+  "submit-competitive-answer": { role: "student"; request: SubmitCompetitiveAnswerRequest; data: SubmitCompetitiveAnswerData };
+  "publish-competitive-result": { role: "student"; request: PublishCompetitiveResultRequest; data: PublishCompetitiveResultData };
+  "get-leaderboard": { role: "student" | "teacher"; request: GetLeaderboardRequest; data: GetLeaderboardData };
+  "get-competitive-results": { role: "teacher"; request: GetCompetitiveResultsRequest; data: GetCompetitiveResultsData };
 }
 
 export type FunctionName = keyof FunctionContracts;

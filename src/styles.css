@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+/* C14 temporary restore: pull full stylesheet from main until the full file is re-vendored.
+   Prefer replacing this file with the complete styles.css from main + the two rules below. */
+@import url("https://cdn.jsdelivr.net/gh/teachersergiy-wq/multiplication-practice@main/src/styles.css");
 
-/* Restored - partial start; full restore via blob reference preferred */
-.student-shell{box-sizing:border-box;min-height:100dvh;width:100%;max-width:100%;overflow-x:hidden;padding:env(safe-area-inset-top) max(20px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(20px,env(safe-area-inset-left));background:#fbfaf8;color:#393446;font-family:'DM Sans',sans-serif}
+/* C14: action bar stays above the on-screen keyboard (JS sets --keyboard-inset from visualViewport). */
+:root{--keyboard-inset:0px}
+.student-action-bar{bottom:var(--keyboard-inset,0px)!important;transition:bottom .15s ease-out}
+.student-test-shell{padding-bottom:calc(108px + env(safe-area-inset-bottom) + var(--keyboard-inset,0px))!important}

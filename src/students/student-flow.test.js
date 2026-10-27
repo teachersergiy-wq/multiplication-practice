@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { STUDENT_AUTH_ERROR, STUDENT_LOGIN_PATTERN, STUDENT_PASSWORD_PATTERN, assignmentWindow, clearAttemptDraft, correctedNow, publicFeedback, readAttemptDraft, remainingSeconds, responseForQuestion, studentApiMessage, studentAuthError, studentEmail, writeAttemptDraft } from "./student-flow.js";
+import { STUDENT_AUTH_ERROR, STUDENT_LOGIN_PATTERN, STUDENT_PASSWORD_PATTERN, assignmentWindow, clearAttemptDraft, correctedNow, publicFeedback, readAttemptDraft, remainingSeconds, responseForQuestion, studentApiMessage, studentAuthError, studentEmail, writeAttemptDraft, correctAnswerCount } from "./student-flow.js";
 
 test("student login builds a hidden synthetic email from the configured domain", () => {
   assert.equal(studentEmail(" ABcd ", "students.local.invalid"), "abcd@students.local.invalid");
@@ -84,4 +84,12 @@ test("attempt error fixtures preserve actionable responses without exposing serv
     assert.equal(studentApiMessage(mock.error.code).includes(mock.error.message), false);
     assert.ok(studentApiMessage(mock.error.code).length > 5);
   }
+});
+
+test("result screen correct count uses questionCount minus mistakes, never negative", () => {
+  assert.equal(correctAnswerCount(35, 4), 31);
+  assert.equal(correctAnswerCount(35, 35), 0);
+  assert.equal(correctAnswerCount(4, 35), 0);
+  assert.equal(correctAnswerCount(10, 3), 7);
+  assert.equal(correctAnswerCount(null, 3), 0);
 });

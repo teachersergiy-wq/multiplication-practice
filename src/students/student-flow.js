@@ -28,18 +28,14 @@ export function responseForQuestion(question, value) {
         ? { type: "matching", pairs } : null;
     }
     case "numeric":
-    case "short_answer": {
-      const text = typeof value === "string" ? value.trim() : typeof value === "object" && value && typeof value.text === "string" ? value.text.trim() : "";
-      if (!text) return null;
-      return question.type === "numeric" ? { type: "numeric", text } : { type: "short_answer", text };
-    }
+    case "short_answer": return typeof value === "string" && value.trim() ? { type: question.type, text: value } : null;
     default: return null;
   }
 }
 
-export function correctedNow(serverNow, receivedAt, deviceNow = Date.now()) {
+export function correctedNow(serverNow, receivedAt, deviceNow) {
   const serverMs = Date.parse(serverNow);
-  if (!Number.isFinite(serverMs) || !Number.isFinite(receivedAt)) return deviceNow;
+  if (!Number.isFinite(serverMs) || !Number.isFinite(receivedAt) || !Number.isFinite(deviceNow)) return deviceNow;
   return serverMs + (deviceNow - receivedAt);
 }
 

@@ -1,10 +1,15 @@
--- G11: pool sampling + start-attempt returns sample
+-- G11: pool sampling without temp table / DELETE (pg_safeupdate); start-attempt pool path.
 create or replace function private.sample_pool_questions(p_attempt_id uuid, p_template_id uuid, p_settings jsonb)
 returns void language plpgsql security definer set search_path = public, private, pg_temp as $$
 declare
-  v_lc int[]; v_i int; v_need int; v_pos int := 0; r record;
+  v_lc int[];
+  v_pos int := 0;
+  r record;
 begin
-  if exists (select 1 from public.assessment_attempt_questions where attempt_id = p_attempt_id) then return; end if;
+  if exists (select 1 from public.assessment_attempt_questions where attempt_id = p_attempt_id) then
+    return;
+  end if;
+
   v_lc := array[
     (p_settings->'pool'->'levelCounts'->>0)::int,
     (p_settings->'pool'->'levelCounts'->>1)::int,
@@ -12,18 +17,42 @@ begin
     (p_settings->'pool'->'levelCounts'->>3)::int,
     (p_settings->'pool'->'levelCounts'->>4)::int
   ];
-  create temporary table if not exists _g11_sample (question_id uuid primary key, ord float) on commit drop;
-  delete from _g11_sample;
-  for v_i in 1..5 loop
-    v_need := coalesce(v_lc[v_i], 0);
-    if v_need > 0 then
-      insert into _g11_sample (question_id, ord)
-      select q.id, random() from public.assessment_questions q
-      where q.template_id = p_template_id and q.difficulty = v_i
-      order by random() limit v_need;
-    end if;
-  end loop;
-  for r in select question_id from _g11_sample order by ord loop
+
+  -- CTE only: no temporary table, no DELETE.
+  for r in
+    with sampled as (
+      select q.id as question_id, random() as ord
+      from public.assessment_questions q
+      where q.template_id = p_template_id and q.difficulty = 1
+      order by random()
+      limit greatest(coalesce(v_lc[1], 0), 0)
+      union all
+      select q.id, random()
+      from public.assessment_questions q
+      where q.template_id = p_template_id and q.difficulty = 2
+      order by random()
+      limit greatest(coalesce(v_lc[2], 0), 0)
+      union all
+      select q.id, random()
+      from public.assessment_questions q
+      where q.template_id = p_template_id and q.difficulty = 3
+      order by random()
+      limit greatest(coalesce(v_lc[3], 0), 0)
+      union all
+      select q.id, random()
+      from public.assessment_questions q
+      where q.template_id = p_template_id and q.difficulty = 4
+      order by random()
+      limit greatest(coalesce(v_lc[4], 0), 0)
+      union all
+      select q.id, random()
+      from public.assessment_questions q
+      where q.template_id = p_template_id and q.difficulty = 5
+      order by random()
+      limit greatest(coalesce(v_lc[5], 0), 0)
+    )
+    select question_id from sampled order by ord
+  loop
     v_pos := v_pos + 1;
     insert into public.assessment_attempt_questions (attempt_id, question_id, position)
     values (p_attempt_id, r.question_id, v_pos);

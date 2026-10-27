@@ -1,5 +1,6 @@
 /**
  * bulk-update-questions — teacher owner; draft only.
+ * Contract: BulkUpdateQuestionsData = { affected: number }
  */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
@@ -81,7 +82,8 @@ Deno.serve(async (req) => {
       return jsonErr(req, "internal", "Bulk update failed");
     }
 
-    return jsonOk(req, data as { updatedCount: number; deletedCount: number });
+    const row = data as { affected?: number } | null;
+    return jsonOk(req, { affected: Number(row?.affected ?? 0) });
   } catch {
     console.error("bulk-update-questions unexpected error");
     return jsonErr(req, "internal", "Unexpected error");

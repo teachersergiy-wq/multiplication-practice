@@ -1,5 +1,6 @@
 /**
  * generate-multiplication-bank — teacher; BIG table pool draft.
+ * Grade level 1–11 (D8).
  */
 import { handleOptions } from "../_shared/cors.ts";
 import { jsonErr, jsonOk } from "../_shared/http.ts";
@@ -60,9 +61,9 @@ Deno.serve(async (req) => {
       typeof body.gradeLevel !== "number" ||
       !Number.isInteger(body.gradeLevel) ||
       body.gradeLevel < 1 ||
-      body.gradeLevel > 12
+      body.gradeLevel > 11
     ) {
-      return jsonErr(req, "invalid_request", "gradeLevel must be integer 1–12");
+      return jsonErr(req, "invalid_request", "gradeLevel must be integer 1–11");
     }
     if (body.mode !== "practice" && body.mode !== "graded") {
       return jsonErr(req, "invalid_request", "mode must be practice or graded");

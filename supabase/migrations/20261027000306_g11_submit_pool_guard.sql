@@ -1,12 +1,34 @@
--- G11: submit-answer requires question in pool sample
+-- G11: submit-answer — pool membership + G6b soft expire (not exception).
+-- Based on 20261020000500_g6b; adds assert_question_in_attempt and pool time sum.
 create or replace function public.api_submit_answer(
-  p_attempt_id uuid, p_student_id uuid, p_question_id uuid, p_response jsonb
-) returns jsonb language plpgsql security definer set search_path = public, private, pg_temp as $$
+  p_attempt_id uuid,
+  p_student_id uuid,
+  p_question_id uuid,
+  p_response jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, private, pg_temp
+as $$
 declare
   v_attempt public.assessment_attempts%rowtype;
-  v_mode public.assessment_mode; v_template_id uuid; v_q public.assessment_questions%rowtype;
-  v_key jsonb; v_correct boolean; v_pts numeric; v_deadline timestamptz;
-  v_limit_sec int; v_settings jsonb; v_all_have boolean; v_sum int;
+  v_mode public.assessment_mode;
+  v_template_id uuid;
+  v_q public.assessment_questions%rowtype;
+  v_key jsonb;
+  v_correct boolean;
+  v_pts numeric;
+  v_deadline timestamptz;
+  v_limit_sec integer;
+  v_settings jsonb;
+  v_all_have boolean;
+  v_sum integer;
+  v_type text;
+  v_arr jsonb;
+  v_len integer;
+  v_text text;
+  v_num numeric;
 begin
   select * into v_attempt from public.assessment_attempts where id = p_attempt_id for update;
   if not found or v_attempt.student_id is distinct from p_student_id then
@@ -19,55 +41,127 @@ begin
   perform private.assert_question_in_attempt(p_attempt_id, p_question_id);
 
   select t.mode, t.id, t.settings into v_mode, v_template_id, v_settings
-  from public.assessment_assignments a join public.assessment_templates t on t.id = a.template_id
+  from public.assessment_assignments a
+  join public.assessment_templates t on t.id = a.template_id
   where a.id = v_attempt.assignment_id;
 
   v_limit_sec := null;
   if v_settings ? 'totalTimeSeconds' then
-    v_limit_sec := (v_settings->>'totalTimeSeconds')::int;
+    v_num := (v_settings->>'totalTimeSeconds')::numeric;
+    v_limit_sec := trunc(v_num)::integer;
   else
     if v_settings ? 'pool' then
-      select bool_and(q.time_limit_seconds is not null), coalesce(sum(q.time_limit_seconds),0)
+      select bool_and(q.time_limit_seconds is not null), coalesce(sum(q.time_limit_seconds), 0)
         into v_all_have, v_sum
       from public.assessment_attempt_questions aq
       join public.assessment_questions q on q.id = aq.question_id
       where aq.attempt_id = p_attempt_id;
     else
-      select bool_and(time_limit_seconds is not null), coalesce(sum(time_limit_seconds),0)
-        into v_all_have, v_sum from public.assessment_questions where template_id = v_template_id;
+      select bool_and(time_limit_seconds is not null), coalesce(sum(time_limit_seconds), 0)
+        into v_all_have, v_sum
+      from public.assessment_questions where template_id = v_template_id;
     end if;
     if v_all_have and v_sum > 0 then v_limit_sec := v_sum; end if;
   end if;
   if v_limit_sec is not null then
     v_deadline := v_attempt.started_at + make_interval(secs => v_limit_sec + 15);
     if v_deadline <= now() then
-      perform private.finalize_attempt(p_attempt_id);
-      update public.assessment_attempts set status = 'abandoned' where id = p_attempt_id and status = 'in_progress';
-      raise exception 'attempt_expired' using errcode = 'P0001';
+      perform private.abandon_attempt(p_attempt_id);
+      return jsonb_build_object('expired', true, 'accepted', false);
     end if;
   end if;
 
-  select * into v_q from public.assessment_questions where id = p_question_id and template_id = v_template_id;
-  if not found then raise exception 'invalid_request: question not in assessment' using errcode = 'P0001'; end if;
-  if exists (select 1 from public.assessment_responses where attempt_id = p_attempt_id and question_id = p_question_id) then
+  select * into v_q from public.assessment_questions
+  where id = p_question_id and template_id = v_template_id;
+  if not found then
+    raise exception 'invalid_request: question not in assessment' using errcode = 'P0001';
+  end if;
+
+  if exists (
+    select 1 from public.assessment_responses
+    where attempt_id = p_attempt_id and question_id = p_question_id
+  ) then
     raise exception 'already_answered' using errcode = 'P0001';
   end if;
-  if p_response is null or (p_response->>'type') is distinct from v_q.question_type::text then
+
+  if p_response is null or jsonb_typeof(p_response) <> 'object' then
+    raise exception 'invalid_request: response must be object' using errcode = 'P0001';
+  end if;
+
+  v_type := p_response->>'type';
+  if v_type is distinct from v_q.question_type::text then
     raise exception 'invalid_request: response type mismatch' using errcode = 'P0001';
   end if;
 
+  if v_type = 'true_false' then
+    if jsonb_typeof(p_response->'value') <> 'boolean' then
+      raise exception 'invalid_request: true_false value must be boolean' using errcode = 'P0001';
+    end if;
+  elsif v_type = 'single_choice' then
+    if jsonb_typeof(p_response->'choiceId') <> 'string'
+       or length(coalesce(p_response->>'choiceId', '')) < 1
+       or length(p_response->>'choiceId') > 64 then
+      raise exception 'invalid_request: single_choice choiceId' using errcode = 'P0001';
+    end if;
+  elsif v_type = 'multiple_choice' then
+    v_arr := coalesce(p_response->'choiceIds', '[]'::jsonb);
+    if jsonb_typeof(v_arr) <> 'array' then
+      raise exception 'invalid_request: multiple_choice choiceIds' using errcode = 'P0001';
+    end if;
+    v_len := jsonb_array_length(v_arr);
+    if v_len < 1 or v_len > 8 then
+      raise exception 'invalid_request: multiple_choice choiceIds length' using errcode = 'P0001';
+    end if;
+  elsif v_type = 'ordering' then
+    v_arr := coalesce(p_response->'order', '[]'::jsonb);
+    if jsonb_typeof(v_arr) <> 'array' then
+      raise exception 'invalid_request: ordering order' using errcode = 'P0001';
+    end if;
+    v_len := jsonb_array_length(v_arr);
+    if v_len < 1 or v_len > 8 then
+      raise exception 'invalid_request: ordering order length' using errcode = 'P0001';
+    end if;
+  elsif v_type = 'matching' then
+    v_arr := coalesce(p_response->'pairs', '[]'::jsonb);
+    if jsonb_typeof(v_arr) <> 'array' then
+      raise exception 'invalid_request: matching pairs' using errcode = 'P0001';
+    end if;
+    v_len := jsonb_array_length(v_arr);
+    if v_len < 1 or v_len > 8 then
+      raise exception 'invalid_request: matching pairs length' using errcode = 'P0001';
+    end if;
+  elsif v_type = 'numeric' then
+    v_text := coalesce(p_response->>'text', '');
+    if length(v_text) < 1 or length(v_text) > 64 then
+      raise exception 'invalid_request: numeric text length' using errcode = 'P0001';
+    end if;
+  elsif v_type = 'short_answer' then
+    v_text := coalesce(p_response->>'text', '');
+    if length(v_text) < 1 or length(v_text) > 200 then
+      raise exception 'invalid_request: short_answer text length' using errcode = 'P0001';
+    end if;
+  else
+    raise exception 'invalid_request: unknown response type' using errcode = 'P0001';
+  end if;
+
   select answer_key into v_key from private.assessment_answer_keys where question_id = p_question_id;
+
   if v_mode = 'practice' then
     select s.is_correct, s.awarded_points into v_correct, v_pts
     from private.score_response(v_q.question_type, v_key, p_response, v_q.points) s;
     insert into public.assessment_responses (attempt_id, question_id, response, is_correct, awarded_points)
     values (p_attempt_id, p_question_id, p_response, v_correct, v_pts);
-    return jsonb_build_object('accepted', true, 'feedback', jsonb_build_object('isCorrect', v_correct, 'awardedPoints', v_pts));
+    return jsonb_build_object(
+      'accepted', true,
+      'feedback', jsonb_build_object('isCorrect', v_correct, 'awardedPoints', v_pts)
+    );
   else
     insert into public.assessment_responses (attempt_id, question_id, response, is_correct, awarded_points)
     values (p_attempt_id, p_question_id, p_response, null, null);
     return jsonb_build_object('accepted', true);
   end if;
-end; $$;
-revoke all on function public.api_submit_answer(uuid,uuid,uuid,jsonb) from public, anon, authenticated;
-grant execute on function public.api_submit_answer(uuid,uuid,uuid,jsonb) to service_role;
+end;
+$$;
+
+revoke all on function public.api_submit_answer(uuid, uuid, uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.api_submit_answer(uuid, uuid, uuid, jsonb) to service_role;

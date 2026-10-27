@@ -19,13 +19,15 @@ begin
   perform tests.ensure_auth_user(student_a, 'g12a-sa@test.invalid');
   perform tests.ensure_auth_user(student_b, 'g12a-sb@test.invalid');
 
-  insert into public.profiles (id, role, full_name, generated_nickname)
+  insert into public.profiles (id, role, full_name, generated_nickname, student_login_code)
   values
-    (teacher_a, 'teacher', 'G12a TA', 'g12a-ta'),
-    (teacher_b, 'teacher', 'G12a TB', 'g12a-tb'),
-    (student_a, 'student', 'G12a SA', 'g12a-sa'),
-    (student_b, 'student', 'G12a SB', 'g12a-sb')
-  on conflict (id) do update set role = excluded.role;
+    (teacher_a, 'teacher', 'G12a TA', 'g12a-ta', null),
+    (teacher_b, 'teacher', 'G12a TB', 'g12a-tb', null),
+    (student_a, 'student', 'G12a SA', 'g12a-sa', 'g12a'),
+    (student_b, 'student', 'G12a SB', 'g12a-sb', 'g12b')
+  on conflict (id) do update set
+    role = excluded.role,
+    student_login_code = excluded.student_login_code;
 
   insert into public.schools (name) values ('G12a School') returning id into school_id;
   insert into public.classes (school_id, name) values (school_id, 'G12a-A') returning id into class_a;

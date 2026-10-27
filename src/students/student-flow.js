@@ -36,44 +36,46 @@ export function responseForQuestion(question, value) {
 export function correctedNow(serverNow, receivedAt, deviceNow) {
   const serverMs = Date.parse(serverNow);
   if (!Number.isFinite(serverMs) || !Number.isFinite(receivedAt) || !Number.isFinite(deviceNow)) return deviceNow;
-  return deviceNow + (serverMs - receivedAt);
+  return serverMs + (deviceNow - receivedAt);
 }
 
-export function remainingSeconds(deadlineAt, serverNow, receivedAt, deviceNow) {
-  if (!deadlineAt) return null;
+export function remainingSeconds(deadlineAt, serverNow, receivedAt, deviceNow = Date.now()) {
   const deadlineMs = Date.parse(deadlineAt);
   if (!Number.isFinite(deadlineMs)) return null;
-  return Math.max(0, Math.ceil((deadlineMs - correctedNow(serverNow, receivedAt, deviceNow)) / 1000));
+  const now = correctedNow(serverNow, receivedAt, deviceNow);
+  return Math.max(0, Math.ceil((deadlineMs - now) / 1000));
 }
 
-const draftKey = (attemptId) => `student-attempt-draft:${attemptId}`;
-const unavailableStorage = {
-  get length() { throw new Error("Session storage unavailable"); },
-  key() { throw new Error("Session storage unavailable"); },
-  getItem() { throw new Error("Session storage unavailable"); },
-  setItem() { throw new Error("Session storage unavailable"); },
-  removeItem() { throw new Error("Session storage unavailable"); },
-};
+export function assignmentWindow(opensAt, closesAt, nowMs = Date.now()) {
+  if (opensAt && Date.parse(opensAt) > nowMs) return "upcoming";
+  if (closesAt && Date.parse(closesAt) <= nowMs) return "closed";
+  return "open";
+}
 
-export function attemptStorage() {
-  try { return globalThis.sessionStorage; }
-  catch { return unavailableStorage; }
+const DRAFT_PREFIX = "student-attempt-draft:";
+
+export function attemptStorage(storage = typeof localStorage !== "undefined" ? localStorage : null) {
+  return storage;
 }
 
 export function readAttemptDraft(storage, attemptId) {
+  if (!storage || !attemptId) return {};
   try {
-    const parsed = JSON.parse(storage.getItem(draftKey(attemptId)) ?? "null");
+    const raw = storage.getItem(DRAFT_PREFIX + attemptId);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
 }
 
-export function writeAttemptDraft(storage, attemptId, questionId, response) {
+export function writeAttemptDraft(storage, attemptId, questionId, value) {
+  if (!storage || !attemptId || !questionId) return false;
   try {
-    const draft = readAttemptDraft(storage, attemptId);
-    draft[questionId] = response;
-    storage.setItem(draftKey(attemptId), JSON.stringify(draft));
+    const current = readAttemptDraft(storage, attemptId);
+    current[questionId] = value;
+    storage.setItem(DRAFT_PREFIX + attemptId, JSON.stringify(current));
     return true;
   } catch {
     return false;
@@ -81,27 +83,33 @@ export function writeAttemptDraft(storage, attemptId, questionId, response) {
 }
 
 export function clearAttemptDraft(storage, attemptId, questionId) {
+  if (!storage || !attemptId) return;
   try {
-    const draft = readAttemptDraft(storage, attemptId);
-    delete draft[questionId];
-    if (Object.keys(draft).length) storage.setItem(draftKey(attemptId), JSON.stringify(draft));
-    else storage.removeItem(draftKey(attemptId));
-  } catch { /* session storage may be unavailable */ }
+    if (!questionId) {
+      storage.removeItem(DRAFT_PREFIX + attemptId);
+      return;
+    }
+    const current = readAttemptDraft(storage, attemptId);
+    delete current[questionId];
+    if (Object.keys(current).length === 0) storage.removeItem(DRAFT_PREFIX + attemptId);
+    else storage.setItem(DRAFT_PREFIX + attemptId, JSON.stringify(current));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function clearAllAttemptDrafts(storage) {
+  if (!storage) return;
   try {
-    for (let i = storage.length - 1; i >= 0; i--) {
+    const keys = [];
+    for (let i = 0; i < storage.length; i += 1) {
       const key = storage.key(i);
-      if (key?.startsWith("student-attempt-draft:")) storage.removeItem(key);
+      if (key && key.startsWith(DRAFT_PREFIX)) keys.push(key);
     }
-  } catch { /* session storage may be unavailable */ }
-}
-
-export function assignmentWindow(opensAt, closesAt, now = Date.now()) {
-  if (opensAt && Date.parse(opensAt) > now) return "upcoming";
-  if (closesAt && Date.parse(closesAt) <= now) return "closed";
-  return "open";
+    for (const key of keys) storage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function studentApiMessage(code) {
@@ -130,4 +138,12 @@ export function publicFeedback(mode, response) {
   return feedback && typeof feedback.isCorrect === "boolean" && Number.isFinite(feedback.awardedPoints)
     ? { isCorrect: feedback.isCorrect, awardedPoints: feedback.awardedPoints }
     : null;
+}
+
+/** Correct answers on the result screen: unanswered already count as mistakes. */
+export function correctAnswerCount(questionCount, mistakes) {
+  const total = Number(questionCount);
+  const wrong = Number(mistakes);
+  if (!Number.isFinite(total) || !Number.isFinite(wrong)) return 0;
+  return Math.max(0, Math.round(total) - Math.max(0, Math.round(wrong)));
 }

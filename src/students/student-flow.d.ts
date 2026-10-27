@@ -16,3 +16,4 @@ export function assignmentWindow(opensAt: string | null, closesAt: string | null
 export function studentApiMessage(code: string): string;
 export function publicFeedback(mode: string, response: unknown): { isCorrect: boolean; awardedPoints: number } | null;
 export function attemptStorage(): Storage;
+export function correctAnswerCount(questionCount: unknown, mistakes: unknown): number;

@@ -97,6 +97,12 @@ Deno.serve(async (req) => {
     });
 
     if (error) {
+      // Log code + short message prefix only — not full bodies.
+      console.error(
+        "api_generate_multiplication_test",
+        error.code ?? "",
+        (error.message ?? "").slice(0, 120),
+      );
       const msg = error.message ?? "";
       if (msg.includes("not_found")) {
         return jsonErr(req, "not_found", "Subject or config not found");
@@ -111,7 +117,6 @@ Deno.serve(async (req) => {
           msg.replace(/^.*invalid_request:\s*/i, "") || "Invalid request",
         );
       }
-      console.error("api_generate_multiplication_test failed");
       return jsonErr(req, "internal", "Generate failed");
     }
 

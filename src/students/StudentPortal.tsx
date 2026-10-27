@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AnswerResponse, FinishAttemptData, PublicQuestion, StartAttemptData } from "../../contracts/api";
 import { useStudentIdentity } from "../auth/TeacherAccessGate";
 import { invokeFunction } from "../lib/function-api";
 import { supabase } from "../lib/supabase";
 import { formatScore, partialCreditHint, practiceFeedbackText } from "../scoring.js";
-import { assignmentWindow, attemptStorage, clearAllAttemptDrafts, clearAttemptDraft, publicFeedback, readAttemptDraft, remainingSeconds, responseForQuestion, studentApiMessage, writeAttemptDraft } from "./student-flow.js";
+import { assignmentWindow, attemptStorage, clearAllAttemptDrafts, clearAttemptDraft, correctAnswerCount, publicFeedback, readAttemptDraft, remainingSeconds, responseForQuestion, studentApiMessage, writeAttemptDraft } from "./student-flow.js";
 
 type AssignmentRow = {
   id: string; class_id: string; template_id: string; opens_at: string | null; closes_at: string | null;
@@ -260,10 +260,51 @@ function AttemptScreen(props: {
 }) {
   const { question, index, total, mode, value, feedback, remaining, busy, message, allAnswered, answeredIds, onChange, onSubmit, onContinue, onFinish } = props;
   const complete = answeredIds.includes(question.id);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const vv = window.visualViewport;
+    const update = () => {
+      if (!vv) {
+        root.style.setProperty("--keyboard-inset", "0px");
+        return;
+      }
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      root.style.setProperty("--keyboard-inset", `${Math.round(inset)}px`);
+    };
+    update();
+    if (!vv) return;
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      root.style.setProperty("--keyboard-inset", "0px");
+    };
+  }, []);
+
+  useEffect(() => {
+    if (complete || busy) return;
+    if (question.type !== "numeric" && question.type !== "short_answer") return;
+    const node = inputRef.current;
+    if (!node) return;
+    const t = window.setTimeout(() => {
+      node.focus({ preventScroll: true });
+    }, 30);
+    return () => window.clearTimeout(t);
+  }, [question.id, question.type, complete, busy]);
+
+  useEffect(() => {
+    if (!feedback || mode !== "practice" || !complete) return;
+    const t = window.setTimeout(() => onContinue(), 800);
+    return () => window.clearTimeout(t);
+  }, [feedback, mode, complete, question.id, onContinue]);
+
   return <main className="student-shell student-test-shell">
     <header className="student-test-header"><a className="brand" href="#home" aria-label="Навчальна студія"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a>{remaining !== null && <span className="student-timer" aria-live="off">Залишилось {formatTime(remaining)}</span>}</header>
     <section className="student-question-area"><div className="student-progress"><span>Запитання {index} з {total}</span><div role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={index}><i style={{ width: `${Math.min(100, index / total * 100)}%` }} /></div></div>
-      <article className="student-question-card"><p className="student-question-prompt">{question.promptText}</p>{partialCreditHint(question.type) && <p className="partial-credit-hint">{partialCreditHint(question.type)}</p>}<AnswerControl question={question} value={value} disabled={busy || complete} onChange={onChange} />
+      <article className="student-question-card"><p className="student-question-prompt">{question.promptText}</p>{partialCreditHint(question.type) && <p className="partial-credit-hint">{partialCreditHint(question.type)}</p>}<AnswerControl question={question} value={value} disabled={busy || complete} onChange={onChange} onSubmit={onSubmit} inputRef={inputRef} />
         {feedback && mode === "practice" && <p className={`student-feedback ${feedback.isCorrect ? "is-correct" : feedback.awardedPoints > 0 ? "is-partial" : "is-incorrect"}`} role="status">{practiceFeedbackText(feedback, question.points)}</p>}
       </article>
     </section>
@@ -271,11 +312,13 @@ function AttemptScreen(props: {
   </main>;
 }
 
-function AnswerControl({ question, value, disabled, onChange }: { question: PublicQuestion; value: unknown; disabled: boolean; onChange: (value: unknown) => void }) {
-  if (question.type === "true_false") return <div className="student-options">{[[true, "Так"], [false, "Ні"]].map(([answer, label]) => <button key={String(answer)} className={`student-option ${value === answer ? "selected" : ""}`} aria-pressed={value === answer} disabled={disabled} onClick={() => onChange(answer)}>{label}</button>)}</div>;
+function AnswerControl({ question, value, disabled, onChange, onSubmit, inputRef }: { question: PublicQuestion; value: unknown; disabled: boolean; onChange: (value: unknown) => void; onSubmit?: () => void; inputRef?: RefObject<HTMLInputElement | null> }) {
+  if (question.type === "true_false") {
+    return <div className="student-option-grid">{[{ label: "Так", val: true }, { label: "Ні", val: false }].map((item) => <button key={String(item.val)} className={`student-option ${value === item.val ? "selected" : ""}`} aria-pressed={value === item.val} disabled={disabled} onClick={() => onChange(item.val)}>{item.label}</button>)}</div>;
+  }
   if (question.type === "single_choice" || question.type === "multiple_choice") {
-    const selected = Array.isArray(value) ? value as string[] : typeof value === "string" ? [value] : [];
-    return <div className="student-options">{question.choices.map((choice) => {
+    const selected = question.type === "single_choice" ? (typeof value === "string" ? [value] : []) : Array.isArray(value) ? value as string[] : [];
+    return <div className="student-option-grid">{question.choices.map((choice) => {
       const active = selected.includes(choice.id);
       return <button key={choice.id} className={`student-option ${active ? "selected" : ""}`} aria-pressed={active} disabled={disabled} onClick={() => onChange(question.type === "single_choice" ? choice.id : active ? selected.filter((id) => id !== choice.id) : [...selected, choice.id])}><span className="student-option-mark">{active ? "✓" : ""}</span>{choice.text}</button>;
     })}</div>;
@@ -287,7 +330,31 @@ function AnswerControl({ question, value, disabled, onChange }: { question: Publ
     return <ol className="student-order-list">{order.map((id, index) => <li key={id}><span>{question.choices.find((choice) => choice.id === id)?.text}</span><div><button aria-label={`Перемістити на позицію ${index}`} disabled={disabled || index === 0} onClick={() => move(index, -1)}>↑</button><button aria-label={`Перемістити на позицію ${index + 2}`} disabled={disabled || index === order.length - 1} onClick={() => move(index, 1)}>↓</button></div></li>)}</ol>;
   }
   if (question.type === "matching") return <MatchingControl question={question} value={value} disabled={disabled} onChange={onChange} />;
-  if (question.type === "numeric" || question.type === "short_answer") return <label className="student-answer-label" htmlFor={`answer-${question.id}`}>{question.type === "numeric" ? "Твоя відповідь" : "Напиши відповідь"}<input id={`answer-${question.id}`} type="text" inputMode={question.type === "numeric" ? "decimal" : "text"} autoComplete="off" value={typeof value === "string" ? value : ""} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></label>;
+  if (question.type === "numeric" || question.type === "short_answer") {
+    const isNumeric = question.type === "numeric";
+    return <label className="student-answer-label" htmlFor={`answer-${question.id}`}>{isNumeric ? "Твоя відповідь" : "Напиши відповідь"}<input
+      id={`answer-${question.id}`}
+      ref={inputRef}
+      type="text"
+      inputMode={isNumeric ? "decimal" : "text"}
+      enterKeyHint="next"
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+      autoFocus={!disabled}
+      value={typeof value === "string" ? value : ""}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        if (disabled || !onSubmit) return;
+        if (responseForQuestion(question, typeof value === "string" ? value : "") == null) return;
+        onSubmit();
+      }}
+    /></label>;
+  }
   return null;
 }
 
@@ -297,13 +364,26 @@ function MatchingControl({ question, value, disabled, onChange }: { question: Ex
   const selectedLeft = answerState?.selectedLeft ?? "";
   const leftItems = question.items.filter((item) => item.side === "left");
   const rightItems = question.items.filter((item) => item.side === "right");
-  return <div className="student-match-grid"><section><h3>Обери елемент</h3>{leftItems.map((item) => <button key={item.id} className={`student-option ${selectedLeft === item.id ? "selected" : ""}`} aria-pressed={selectedLeft === item.id} disabled={disabled} onClick={() => onChange({ pairs, selectedLeft: item.id })}>{item.text}<small>{pairs.some((pair) => pair.leftId === item.id) ? " · пару обрано" : " · обери пару"}</small></button>)}</section><section><h3>Знайди пару</h3>{rightItems.map((item) => <button key={item.id} className={`student-option ${pairs.some((pair) => pair.rightId === item.id) ? "selected" : ""}`} aria-pressed={pairs.some((pair) => pair.rightId === item.id)} disabled={disabled || !selectedLeft} onClick={() => { if (!selectedLeft) return; onChange({ pairs: [...pairs.filter((pair) => pair.leftId !== selectedLeft && pair.rightId !== item.id), { leftId: selectedLeft, rightId: item.id }], selectedLeft: "" }); }}>{item.text}</button>)}</section></div>;
+  const usedRight = new Set(pairs.map((pair) => pair.rightId));
+  const setState = (nextPairs: { leftId: string; rightId: string }[], nextLeft = "") => onChange({ pairs: nextPairs, selectedLeft: nextLeft });
+  return <div className="student-match-grid"><div>{leftItems.map((item) => {
+    const matched = pairs.find((pair) => pair.leftId === item.id);
+    return <button key={item.id} className={`student-option ${selectedLeft === item.id ? "selected" : matched ? "matched" : ""}`} disabled={disabled} onClick={() => setState(pairs, selectedLeft === item.id ? "" : item.id)}>{item.text}{matched ? ` → ${rightItems.find((right) => right.id === matched.rightId)?.text ?? ""}` : ""}</button>;
+  })}</div><div>{rightItems.map((item) => <button key={item.id} className={`student-option ${usedRight.has(item.id) ? "matched" : ""}`} disabled={disabled || !selectedLeft || usedRight.has(item.id)} onClick={() => {
+    if (!selectedLeft) return;
+    const next = pairs.filter((pair) => pair.leftId !== selectedLeft && pair.rightId !== item.id);
+    next.push({ leftId: selectedLeft, rightId: item.id });
+    setState(next, "");
+  }}>{item.text}</button>)}</div></div>;
 }
 
 function StudentResult({ result, onBack }: { result: FinishAttemptData; onBack: () => void }) {
-  return <main className="student-shell"><header className="student-topbar"><a className="brand" href="#home"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a></header><section className="student-result-card"><p className="student-kicker">ТЕСТ ЗАВЕРШЕНО</p><h1>Твій результат</h1><div className="student-result-score">{formatScore(result.percent)}<small>%</small></div><p className="student-result-points">{formatScore(result.score)} з {formatScore(result.maxScore)} балів</p>{result.passed !== null && <p className={result.passed ? "student-passed" : "student-not-passed"}>{result.passed ? "Чудова робота — тест складено!" : "Ще трохи практики — і все вийде."}</p>}<p>Правильних відповідей: {result.answeredCount - result.mistakes} із {result.questionCount}</p><p>Помилок: {result.mistakes}</p><button className="student-button" onClick={onBack}>До моїх спроб</button></section></main>;
+  const correct = correctAnswerCount(result.questionCount, result.mistakes);
+  return <main className="student-shell"><header className="student-topbar"><a className="brand" href="#home"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a></header><section className="student-result-card"><p className="student-kicker">ТЕСТ ЗАВЕРШЕНО</p><h1>Твій результат</h1><div className="student-result-score">{formatScore(result.percent)}<small>%</small></div><p className="student-result-points">{formatScore(result.score)} з {formatScore(result.maxScore)} балів</p>{result.passed !== null && <p className={result.passed ? "student-passed" : "student-not-passed"}>{result.passed ? "Чудова робота — тест складено!" : "Ще трохи практики — і все вийде."}</p>}<p>Правильних відповідей: {correct} із {result.questionCount}</p><p>Помилок: {result.mistakes}</p><button className="student-button" onClick={onBack}>До моїх спроб</button></section></main>;
 }
 
 function formatTime(seconds: number) {
-  return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }

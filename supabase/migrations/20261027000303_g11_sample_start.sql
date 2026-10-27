@@ -18,38 +18,48 @@ begin
     (p_settings->'pool'->'levelCounts'->>4)::int
   ];
 
-  -- CTE only: no temporary table, no DELETE.
+  -- CTE + subqueries: no temporary table, no DELETE (pg_safeupdate).
   for r in
     with sampled as (
-      select q.id as question_id, random() as ord
-      from public.assessment_questions q
-      where q.template_id = p_template_id and q.difficulty = 1
-      order by random()
-      limit greatest(coalesce(v_lc[1], 0), 0)
+      select question_id, random() as ord from (
+        select q.id as question_id
+        from public.assessment_questions q
+        where q.template_id = p_template_id and q.difficulty = 1
+        order by random()
+        limit greatest(coalesce(v_lc[1], 0), 0)
+      ) s1
       union all
-      select q.id, random()
-      from public.assessment_questions q
-      where q.template_id = p_template_id and q.difficulty = 2
-      order by random()
-      limit greatest(coalesce(v_lc[2], 0), 0)
+      select question_id, random() from (
+        select q.id as question_id
+        from public.assessment_questions q
+        where q.template_id = p_template_id and q.difficulty = 2
+        order by random()
+        limit greatest(coalesce(v_lc[2], 0), 0)
+      ) s2
       union all
-      select q.id, random()
-      from public.assessment_questions q
-      where q.template_id = p_template_id and q.difficulty = 3
-      order by random()
-      limit greatest(coalesce(v_lc[3], 0), 0)
+      select question_id, random() from (
+        select q.id as question_id
+        from public.assessment_questions q
+        where q.template_id = p_template_id and q.difficulty = 3
+        order by random()
+        limit greatest(coalesce(v_lc[3], 0), 0)
+      ) s3
       union all
-      select q.id, random()
-      from public.assessment_questions q
-      where q.template_id = p_template_id and q.difficulty = 4
-      order by random()
-      limit greatest(coalesce(v_lc[4], 0), 0)
+      select question_id, random() from (
+        select q.id as question_id
+        from public.assessment_questions q
+        where q.template_id = p_template_id and q.difficulty = 4
+        order by random()
+        limit greatest(coalesce(v_lc[4], 0), 0)
+      ) s4
       union all
-      select q.id, random()
-      from public.assessment_questions q
-      where q.template_id = p_template_id and q.difficulty = 5
-      order by random()
-      limit greatest(coalesce(v_lc[5], 0), 0)
+      select question_id, random() from (
+        select q.id as question_id
+        from public.assessment_questions q
+        where q.template_id = p_template_id and q.difficulty = 5
+        order by random()
+        limit greatest(coalesce(v_lc[5], 0), 0)
+      ) s5
     )
     select question_id from sampled order by ord
   loop

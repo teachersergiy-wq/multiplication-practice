@@ -63,7 +63,7 @@ begin
   res := public.api_bulk_update_questions(
     v_tid, v_tpl, array[v_q_out], jsonb_build_object('difficulty', 4), false
   );
-  perform tests.ok((res->>'updatedCount')::int = 1, 'bulk difficulty');
+  perform tests.ok((res->>'affected')::int = 1, 'bulk affected');
 
   begin
     perform public.api_bulk_update_questions(

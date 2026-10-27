@@ -137,7 +137,7 @@ export function StudentPortal({ client = supabase }: { client?: SupabaseClient |
 
   const currentQuestion = attempt?.data.questions[questionIndex];
   const currentValue = currentQuestion ? answers[currentQuestion.id] : undefined;
-  const displayIndex = currentQuestion ? currentQuestion.position : 0;
+  const displayIndex = currentQuestion ? questionIndex + 1 : 0;
 
   function updateAnswer(question: PublicQuestion, value: unknown) {
     setAnswers((current) => ({ ...current, [question.id]: value }));

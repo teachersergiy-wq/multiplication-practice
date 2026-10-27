@@ -302,6 +302,9 @@ function AttemptScreen(props: {
   }, [feedback, mode, complete, question.id, onContinue]);
 
   return <main className="student-shell student-test-shell">
+    <style>{`/* keyboard-inset-styles C14 */
+.student-action-bar{bottom:var(--keyboard-inset,0px)!important;transition:bottom .15s ease-out}
+.student-test-shell{padding-bottom:calc(108px + env(safe-area-inset-bottom) + var(--keyboard-inset,0px))!important}`}</style>
     <header className="student-test-header"><a className="brand" href="#home" aria-label="Навчальна студія"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a>{remaining !== null && <span className="student-timer" aria-live="off">Залишилось {formatTime(remaining)}</span>}</header>
     <section className="student-question-area"><div className="student-progress"><span>Запитання {index} з {total}</span><div role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={index}><i style={{ width: `${Math.min(100, index / total * 100)}%` }} /></div></div>
       <article className="student-question-card"><p className="student-question-prompt">{question.promptText}</p>{partialCreditHint(question.type) && <p className="partial-credit-hint">{partialCreditHint(question.type)}</p>}<AnswerControl question={question} value={value} disabled={busy || complete} onChange={onChange} onSubmit={onSubmit} inputRef={inputRef} />

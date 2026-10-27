@@ -153,8 +153,8 @@ export function StudentManagement() {
           {students.map((item) => <article className="student-row" key={item.student_id}>
             <span className="student-avatar">{item.profiles?.full_name.slice(0, 1) ?? "У"}</span>
             <strong>{item.profiles?.full_name ?? "Учень"}</strong>
-            <button type="button" disabled={busy} onClick={() => void resetPassword(item.student_id)}>Новий пароль</button>
-            <button type="button" className="student-delete" disabled={busy} onClick={() => void deleteStudent(item.student_id)}>Видалити</button>
+            <button type="button" disabled={busy} aria-label={`Створити новий пароль для ${item.profiles?.full_name ?? "учня"}`} onClick={() => void resetPassword(item.student_id)}>Новий пароль</button>
+            <button type="button" className="student-delete" disabled={busy} aria-label={`Видалити учня ${item.profiles?.full_name ?? "без імені"}`} onClick={() => void deleteStudent(item.student_id)}>Видалити</button>
           </article>)}
           {!students.length && <p className="class-empty">У цьому класі поки немає учнів.</p>}
         </div>

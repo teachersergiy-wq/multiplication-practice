@@ -666,7 +666,8 @@ export interface SubmitCompetitiveAnswerRequest {
   response: { type: "numeric"; value: number };
 }
 export type SubmitCompetitiveAnswerData =
-  | { finished: false; correct: true; score: number; question: CompetitiveQuestion; limitMs: number }
+  /** `correct` is false only on finite levels (a wrong answer does not end the run there). */
+  | { finished: false; correct: boolean; score: number; question: CompetitiveQuestion; limitMs: number }
   | { finished: true; result: CompetitiveRunResult };
 
 export interface PublishCompetitiveResultRequest {

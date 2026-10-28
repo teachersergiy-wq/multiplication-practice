@@ -58,7 +58,7 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
     zeroTimer.current = window.setTimeout(() => {
       zeroTimer.current = null;
       void submit(true);
-    }, 1100);
+    }, 1300);
     return () => { if (zeroTimer.current !== null) window.clearTimeout(zeroTimer.current); zeroTimer.current = null; };
   }, [run, outcome, busy, remaining]);
   useEffect(() => {
@@ -163,7 +163,7 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
       <div className="competitive-score">{outcome.result.score}<small> правильних поспіль</small></div><p>Час забігу: {formatCompetitiveDuration(outcome.result.durationMs)}</p>
       {outcome.result.isPersonalBest && <p className="competitive-best">Новий особистий рекорд!</p>}
       {!outcome.isEndless && outcome.passed !== null && <p className={outcome.passed ? "student-passed" : "student-not-passed"}>{outcome.passed ? "Рівень пройдено — наступний відкрито!" : "Цього разу рівень не пройдено. Спробуй ще!"}</p>}
-      {outcome.isEndless && labels.length > 0 && <><p className="competitive-qualified">Ти потрапив у ТОП-N:</p><ul>{labels.map((item) => <li key={item.scope}>{item.label} — {item.rank}-те місце</li>)}</ul>
+      {outcome.isEndless && labels.length > 0 && <><p className="competitive-qualified">Ти потрапив у ТОП-10:</p><ul>{labels.map((item) => <li key={item.scope}>{item.label} — {item.rank}-те місце</li>)}</ul>
         <fieldset className="competitive-publish-options" disabled={published || busy}><legend>Чи публікувати результат?</legend>{choices.map((choice) => <label key={choice}><input type="radio" name="competitive-visibility" checked={visibility === choice} onChange={() => setVisibility(choice as ResultVisibility)} />{VISIBILITY_LABEL[choice as ResultVisibility]}</label>)}</fieldset>
         {visibility === "name" && <p className="competitive-privacy-note">Ім’я бачать лише в рейтингу класу.</p>}
         {visibility !== "none" && <button className="student-button" disabled={busy || published} onClick={() => void publish()}>{published ? "Опубліковано" : busy ? "Зберігаємо…" : "Підтвердити публікацію"}</button>}

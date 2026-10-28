@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AnswerResponse, FinishAttemptData, PublicQuestion, StartAttemptData } from "../../contracts/api";
 import { useStudentIdentity } from "../auth/TeacherAccessGate";
+import { CompetitiveStudent } from "../competitive/CompetitiveStudent";
 import { invokeFunction } from "../lib/function-api";
 import { supabase } from "../lib/supabase";
 import { formatScore, partialCreditHint, practiceFeedbackText } from "../scoring.js";
@@ -17,7 +18,7 @@ type AttemptRow = {
   score: number | null; max_score: number | null; passed: boolean | null; elapsed_ms: number | null;
 };
 type AttemptState = { data: StartAttemptData; receivedAt: number };
-type PortalTab = "assignments" | "history";
+type PortalTab = "assignments" | "history" | "competitions";
 
 const db = (client: SupabaseClient) => client as any;
 
@@ -222,9 +223,9 @@ export function StudentPortal({ client = supabase }: { client?: SupabaseClient |
     <header className="student-topbar"><a className="brand" href="#home"><span className="brand-mark">н</span><span>навчальна<span className="brand-light">студія</span></span></a><button className="student-profile" onClick={() => void student.signOut()} aria-label="Вийти">{student.displayName} <span aria-hidden="true">↪</span></button></header>
     <section className="student-content">
       <p className="student-kicker">{className || "КАБІНЕТ УЧНЯ"}</p><h1>Привіт, {student.displayName.split(/\s+/)[0]}!</h1>
-      <div className="student-tabs" role="tablist" aria-label="Розділи учня"><button role="tab" aria-selected={tab === "assignments"} onClick={() => setTab("assignments")}>Завдання</button><button role="tab" aria-selected={tab === "history"} onClick={() => setTab("history")}>Мої спроби</button></div>
+      <div className="student-tabs" role="tablist" aria-label="Розділи учня"><button role="tab" aria-selected={tab === "assignments"} onClick={() => setTab("assignments")}>Завдання</button><button role="tab" aria-selected={tab === "history"} onClick={() => setTab("history")}>Мої спроби</button><button role="tab" aria-selected={tab === "competitions"} onClick={() => setTab("competitions")}>Змагання</button></div>
       {message && <p className="student-notice" role="status">{message}<button onClick={() => setMessage("")} aria-label="Закрити повідомлення">×</button></p>}
-      {tab === "assignments" ? <section className="student-list" aria-label="Завдання класу">
+      {tab === "competitions" ? <CompetitiveStudent client={client} studentId={student.userId} /> : tab === "assignments" ? <section className="student-list" aria-label="Завдання класу">
         <h2>Завдання класу</h2>
         {!assignments.length ? <div className="student-empty">Поки немає призначених тестів. Зазирни сюди трохи пізніше.</div> : assignments.map((assignment) => {
           const windowState = assignmentWindow(assignment.opens_at, assignment.closes_at, now);

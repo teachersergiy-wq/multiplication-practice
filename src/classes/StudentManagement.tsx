@@ -4,6 +4,7 @@ import { apiErrorMessage, invokeFunction } from "../lib/function-api";
 import { supabase } from "../lib/supabase";
 import { CLASS_LIST_CHANGED_EVENT, announceClassListChanged, classSelectionAfterRefresh } from "./class-api.js";
 import { ClassSetupDialog } from "./ClassSetupDialog";
+import { TeacherCompetitiveResults } from "../competitive/TeacherCompetitiveResults";
 
 interface ClassRow {
   id: string;
@@ -158,6 +159,7 @@ export function StudentManagement() {
           </article>)}
           {!students.length && <p className="class-empty">У цьому класі поки немає учнів.</p>}
         </div>
+        {selectedClass && <TeacherCompetitiveResults client={client} classId={selectedClass.id} className={selectedClass.name} />}
       </>}
       {setupOpen && <ClassSetupDialog client={client} teacherId={teacherId} initialClassId={configureClassId} onClose={() => setSetupOpen(false)} onSaved={(result: CreateClassData | SetClassSubjectData) => {
         setSetupOpen(false);

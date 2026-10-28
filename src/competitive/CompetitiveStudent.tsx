@@ -6,11 +6,13 @@ import { invokeFunction } from "../lib/function-api";
 import { competitiveApiMessage, competitiveRemainingSeconds, formatCompetitiveDuration, publishChoices, qualifiedLabels, updateQuestionClock } from "./competitive-flow.js";
 
 type ClockState = { serverNow: string; receivedAt: number; limitMs: number };
-type LiveRun = { runId: string; topicCode: string; levelNumber: number; isEndless: boolean; question: CompetitiveQuestion; score: number; clock: ClockState };
+type LiveRun = { runId: string; topicCode: string; levelNumber: number; isEndless: boolean; questionCount: number | null; answeredCount: number; question: CompetitiveQuestion; score: number; clock: ClockState };
 type Outcome = { runId: string; levelNumber: number; isEndless: boolean; result: CompetitiveRunResult; passed: boolean | null };
 type AnswerPayload = SubmitCompetitiveAnswerData | { finished: false; correct: boolean; score: number; question: CompetitiveQuestion; limitMs: number };
 
 const VISIBILITY_LABEL: Record<ResultVisibility, string> = { none: "Не публікувати", nickname: "Мій нікнейм", anonymous: "Анонімно", name: "Моє ім’я (лише в рейтингу класу)" };
+const LEADERBOARD_SCOPES = ["class", "school", "school_year", "absolute"] as const;
+const LEADERBOARD_NAMES = { class: "Клас", school: "Школа", school_year: "Навчальний рік", absolute: "Загальний рейтинг паралелі" } as const;
 
 export function CompetitiveStudent({ client, studentId }: { client: SupabaseClient | null; studentId: string }) {
   const [topics, setTopics] = useState<CompetitiveTopic[]>([]);
@@ -25,6 +27,8 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [visibility, setVisibility] = useState<ResultVisibility>("none");
   const [published, setPublished] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<{ topicCode: string; scope: typeof LEADERBOARD_SCOPES[number]; rows: { rank: number; displayName: string; score: number; durationMs: number; achievedAt: string }[] } | null>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const zeroTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const draftKey = run ? `competitive-answer:${studentId}:${run.runId}:${run.question.id}` : "";
@@ -77,7 +81,7 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
       return;
     }
     const level = topic.levels.find((item) => item.levelNumber === levelNumber);
-    setRun({ runId: response.data.runId, topicCode: topic.code, levelNumber, isEndless: Boolean(level?.isEndless), question: response.data.question, score: 0,
+    setRun({ runId: response.data.runId, topicCode: topic.code, levelNumber, isEndless: Boolean(level?.isEndless), questionCount: level?.questionCount ?? null, answeredCount: 0, question: response.data.question, score: 0,
       clock: { serverNow: response.data.serverNow, receivedAt: Date.now(), limitMs: response.data.limitMs } });
   }
 
@@ -113,7 +117,7 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
     try { sessionStorage.removeItem(draftKey); } catch { /* storage can be disabled */ }
     setAnswer(""); setError("");
     setAnswerFeedback(data.correct ? "Правильно! Наступне запитання." : "Не цього разу — забіг триває.");
-    setRun({ ...run, question: data.question, score: data.score, clock: nextClock });
+    setRun({ ...run, question: data.question, score: data.score, answeredCount: run.answeredCount + 1, clock: nextClock });
   }
 
   async function publish() {
@@ -125,11 +129,20 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
     setPublished(true); setNotice(response.data.published ? "Результат опубліковано." : "Результат не публікується.");
   }
 
+  async function openLeaderboard(topicCode: string, scope: typeof LEADERBOARD_SCOPES[number]) {
+    if (!client) return;
+    setLeaderboardLoading(true); setError("");
+    const response = await invokeFunction(client, "get-leaderboard", { topicCode, scope, limit: 10 });
+    setLeaderboardLoading(false);
+    if (!response.ok) { setError(competitiveApiMessage(response.error.code)); return; }
+    setLeaderboard({ topicCode, scope, rows: response.data.rows });
+  }
+
   function leaveRun() { setRun(null); setAnswer(""); setError(""); setNotice(""); void loadTopics(); }
 
   if (loading && !topics.length && !run && !outcome) return <section className="competitive-panel"><p role="status">Завантажуємо змагання…</p></section>;
   if (run) return <main className="student-shell competitive-run-shell">
-    <header className="student-test-header"><button className="competitive-back" onClick={leaveRun}>← Теми</button><span className="competitive-run-score" aria-live="polite">Серія: {run.score}</span><span className="student-timer" aria-live="polite">{remaining > 0 ? `${remaining} с` : "0 с"}</span></header>
+    <header className="student-test-header"><button className="competitive-back" onClick={leaveRun}>← Теми</button><span className="competitive-run-score" aria-live="polite">{run.isEndless ? `Серія: ${run.score}` : `Питання ${run.answeredCount + 1} з ${run.questionCount ?? "—"}`}</span><span className="student-timer" aria-live="polite">{remaining > 0 ? `${remaining} с` : "0 с"}</span></header>
     <section className="competitive-question-area" aria-live="polite"><p className="student-kicker">{run.isEndless ? "СУПЕР РІВЕНЬ" : `РІВЕНЬ ${run.levelNumber}`}</p>
       <article className="competitive-question-card"><h1>{run.question.promptText}</h1><label className="competitive-answer-label" htmlFor="competitive-answer">Твоя відповідь
         <input id="competitive-answer" ref={inputRef} type="text" inputMode="numeric" enterKeyHint="send" autoComplete="off" value={answer} disabled={busy} onChange={(event) => {
@@ -160,6 +173,13 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
     </section>;
   }
 
+  if (leaderboard) return <section className="competitive-panel competitive-leaderboard" aria-labelledby="competitive-leaderboard-title">
+    <header className="competitive-heading"><div><p className="student-kicker">РЕЙТИНГ</p><h2 id="competitive-leaderboard-title">{topics.find((topic) => topic.code === leaderboard.topicCode)?.title ?? "Змагання"}</h2><p>{LEADERBOARD_NAMES[leaderboard.scope]} · для твоєї паралелі</p></div><button className="competitive-secondary-button" onClick={() => setLeaderboard(null)}>← До тем</button></header>
+    <nav className="competitive-scope-tabs" aria-label="Область рейтингу">{LEADERBOARD_SCOPES.map((scope) => <button key={scope} aria-pressed={scope === leaderboard.scope} disabled={leaderboardLoading} onClick={() => void openLeaderboard(leaderboard.topicCode, scope)}>{LEADERBOARD_NAMES[scope]}</button>)}</nav>
+    {error && <p className="competitive-error" role="alert">{error}<button onClick={() => void openLeaderboard(leaderboard.topicCode, leaderboard.scope)} disabled={leaderboardLoading}>Оновити</button></p>}
+    {!leaderboard.rows.length ? <div className="student-empty">Поки що немає опублікованих результатів.</div> : <ol className="competitive-leaderboard-list">{leaderboard.rows.map((row) => <li key={`${row.rank}-${row.displayName}-${row.achievedAt}`}><strong>{row.rank}</strong><span>{row.displayName}</span><b>{row.score}</b><small>{formatCompetitiveDuration(row.durationMs)} · {new Date(row.achievedAt).toLocaleDateString("uk-UA")}</small></li>)}</ol>}
+  </section>;
+
   return <section className="competitive-panel" aria-label="Змагання">
     <div className="competitive-heading"><div><p className="student-kicker">ВИПРОБУЙ СЕБЕ</p><h2>Змагання</h2></div><button className="competitive-refresh" onClick={() => void loadTopics()} disabled={loading} aria-label="Оновити теми">↻</button></div>
     {error && <p className="competitive-error" role="alert">{error}<button onClick={() => void loadTopics()} disabled={loading}>Спробувати знову</button></p>}{notice && <p className="competitive-notice" role="status">{notice}</p>}
@@ -169,6 +189,7 @@ export function CompetitiveStudent({ client, studentId }: { client: SupabaseClie
       <div className="competitive-levels" aria-label={`Рівні теми ${topic.title}`}>{topic.levels.map((level) => <button key={level.levelNumber} className={`competitive-level ${level.passed ? "passed" : ""}`} disabled={!level.unlocked || busy} title={!level.unlocked ? "Пройди попередній рівень" : undefined} onClick={() => void start(topic, level.levelNumber)}>
         <span>{level.isEndless ? "∞" : level.levelNumber}</span><small>{level.isEndless ? "Супер" : level.passed ? "Пройдено" : level.unlocked ? "Грати" : "Закрито"}</small>
       </button>)}</div>
+      <button className="competitive-topic-rating" onClick={() => void openLeaderboard(topic.code, "class")} disabled={leaderboardLoading}>Рейтинг теми →</button>
     </article>)}</div>
   </section>;
 }

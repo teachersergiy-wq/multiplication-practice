@@ -1,3 +1,4 @@
+import "./competitive.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CompetitiveQuestion, CompetitiveRunResult, CompetitiveTopic, ResultVisibility, SubmitCompetitiveAnswerData } from "../../contracts/api";
